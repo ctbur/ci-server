@@ -6,14 +6,10 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql://ci-server:123456@postgres:5432/ci
-    depends_on:
-      - postgres
-
-  ci-agent:
-    image: ci-agent
-    container_name: ci-agent
     volumes:
       - build_volume:/home/agent
+    depends_on:
+      - postgres
 
   postgres:
     image: postgres:17-alpine
