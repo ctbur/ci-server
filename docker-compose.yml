@@ -1,0 +1,32 @@
+services:
+  ci-server:
+    image: ci-server
+    container_name: ci-server
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://ci-server:123456@postgres:5432/ci
+    depends_on:
+      - postgres
+
+  ci-agent:
+    image: ci-agent
+    container_name: ci-agent
+    volumes:
+      - build_volume:/home/agent
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=ci-server
+      - POSTGRES_PASSWORD=123456
+      - POSTGRES_DB=ci
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  build_volume:
+  postgres_data:
