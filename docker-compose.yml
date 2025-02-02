@@ -7,7 +7,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://ci-server:123456@postgres:5432/ci
     volumes:
-      - build_volume:/home/agent
+      - build_volume:/build/
     depends_on:
       - postgres
 
