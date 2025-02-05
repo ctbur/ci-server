@@ -3,11 +3,14 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/ctbur/ci-server/v2/internal/build"
+	"github.com/ctbur/ci-server/v2/internal/disk"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -64,13 +67,40 @@ func handleWebhook() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := LoggerFromContext(r.Context())
 		log.Info("HandleWebhook called")
-		renderJSON(w, struct{}{}, 200)
+
+		dd := disk.New("/data")
+		builder := build.NewBuilder(&dd)
+
+		buildCmd := build.BuildCmd{
+			BuildImage: "",
+			Cmd:        []string{},
+		}
+
+		commitSHA := "4186f57fe872a9a8aa6ffd9e7857588a9c6eada2"
+		err := builder.Build("godotengine", "godot", "https://github.com/godotengine/godot.git", commitSHA, buildCmd)
+
+		if err != nil {
+			renderError(w, err, 500)
+		} else {
+			renderStruct(w, struct{}{}, 200)
+		}
 	}
 }
 
-func renderJSON(w http.ResponseWriter, v interface{}, status int) {
+func renderStruct(w http.ResponseWriter, v interface{}, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	enc := json.NewEncoder(w)
 	enc.Encode(v)
+}
+
+func renderError(w http.ResponseWriter, err error, status int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	enc := json.NewEncoder(w)
+
+	errStr := fmt.Sprintf("%v", err)
+	enc.Encode(struct {
+		Error string `json:"error"`
+	}{Error: errStr})
 }

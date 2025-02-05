@@ -7,7 +7,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://ci-server:123456@postgres:5432/ci
     volumes:
-      - build_volume:/build/
+      - ./data/build:/data/
     depends_on:
       - postgres
 
@@ -21,7 +21,7 @@ services:
       - POSTGRES_PASSWORD=123456
       - POSTGRES_DB=ci
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql/data
 
 volumes:
   build_volume:
