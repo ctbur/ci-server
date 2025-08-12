@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/disk"
 )
@@ -59,19 +60,16 @@ func (b *Builder) Build(owner, name, cloneURL, commitSHA string, cmd BuildCmd) e
 		return fmt.Errorf("failed to checkout commit for '%s': %v", cloneURL, err)
 	}
 
-	dockerCmdArgs := []string{
-		"docker", "run",
-		"--volume", fmt.Sprintf("%s:/build", buildDir),
-		"--workdir", "/build",
-		cmd.BuildImage,
-	}
-	dockerCmdArgs = append(dockerCmdArgs, cmd.Cmd...)
-
-	buildCmd := exec.Command(dockerCmdArgs[0], dockerCmdArgs[1:]...)
+	buildCmd := exec.Command(cmd.Cmd[0], cmd.Cmd[1:]...)
+	buildCmd.Dir = buildDir
 	debugCmd(buildCmd)
+
+	start := time.Now()
 	if err := buildCmd.Run(); err != nil {
 		return fmt.Errorf("failed to build repository")
 	}
+	elapsed := time.Since(start)
+	fmt.Printf("\n\nTotal time taken: %s\n\n", elapsed)
 
 	return nil
 }

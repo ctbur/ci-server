@@ -5,5 +5,5 @@ server:
 
 compose: server
 	mkdir -p data
-	docker build --build-arg USER=$(shell id -u):$(shell id -g) -f ./Dockerfile -t ci-server ./build
+	docker build --build-arg uid=$(shell id -u) --build-arg gid=$(shell id -g) -f ./Dockerfile -t ci-server ./build
 	docker compose up

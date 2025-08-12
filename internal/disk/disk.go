@@ -7,7 +7,7 @@ import (
 
 const SUBDIR_REPOS = "repos"
 const SUBDIR_BUILDS = "builds"
-const DEFAULT_PERMS = 700
+const DEFAULT_PERMS = 0700
 
 type Disk struct {
 	rootDir string

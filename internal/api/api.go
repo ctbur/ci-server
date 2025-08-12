@@ -72,11 +72,12 @@ func handleWebhook() http.HandlerFunc {
 		builder := build.NewBuilder(&dd)
 
 		buildCmd := build.BuildCmd{
-			BuildImage: "",
-			Cmd:        []string{},
+			BuildImage: "temp-builder",
+			//Cmd:        []string{"sh", "-c", "echo test && whoami && id -u && ls && pwd"},
+			Cmd: []string{"scons", "platform=linux"},
 		}
 
-		commitSHA := "4186f57fe872a9a8aa6ffd9e7857588a9c6eada2"
+		commitSHA := "bbf29a537f3d2875bba4304b1543d4bf0278b6d9"
 		err := builder.Build("godotengine", "godot", "https://github.com/godotengine/godot.git", commitSHA, buildCmd)
 
 		if err != nil {

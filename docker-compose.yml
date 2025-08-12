@@ -7,7 +7,9 @@ services:
     environment:
       - DATABASE_URL=postgresql://ci-server:123456@postgres:5432/ci
     volumes:
-      - ./data/build:/data/
+      - ./data/builder:/data/
+    privileged: true
+    user: ciserver
     depends_on:
       - postgres
 
