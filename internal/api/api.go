@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/build"
-	"github.com/ctbur/ci-server/v2/internal/disk"
+	"github.com/ctbur/ci-server/v2/internal/config"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -21,12 +21,12 @@ func New() API {
 	return API{}
 }
 
-func (a API) Handler() http.Handler {
+func (a API) Handler(cfg config.Config, bld build.Builder) http.Handler {
 	r := chi.NewRouter()
 	r.Use(loggerMiddleware)
 
 	r.Route("/webhook", func(r chi.Router) {
-		r.Post("/", handleWebhook())
+		r.Post("/", handleWebhook(cfg, bld))
 	})
 
 	return r
@@ -63,22 +63,18 @@ func loggerMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func handleWebhook() http.HandlerFunc {
+func handleWebhook(cfg config.Config, bld build.Builder) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := LoggerFromContext(r.Context())
 		log.Info("HandleWebhook called")
 
-		dd := disk.New("/data")
-		builder := build.NewBuilder(&dd)
-
-		buildCmd := build.BuildCmd{
-			BuildImage: "temp-builder",
-			//Cmd:        []string{"sh", "-c", "echo test && whoami && id -u && ls && pwd"},
-			Cmd: []string{"scons", "platform=linux"},
-		}
-
 		commitSHA := "bbf29a537f3d2875bba4304b1543d4bf0278b6d9"
-		err := builder.Build("godotengine", "godot", "https://github.com/godotengine/godot.git", commitSHA, buildCmd)
+		result, err := bld.Build("godotengine", "godot", "master", commitSHA, []string{"scons", "platform=linux"})
+		if result != nil {
+			log.Info("Build completed", slog.Bool("success", result.Success), slog.Duration("duration", result.Duration))
+		} else {
+			log.Error("Build failed: %w", result)
+		}
 
 		if err != nil {
 			renderError(w, err, 500)
@@ -88,7 +84,7 @@ func handleWebhook() http.HandlerFunc {
 	}
 }
 
-func renderStruct(w http.ResponseWriter, v interface{}, status int) {
+func renderStruct(w http.ResponseWriter, v any, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	enc := json.NewEncoder(w)
