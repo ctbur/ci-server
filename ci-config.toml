@@ -1,0 +1,6 @@
+build_dir = "/data"
+
+[[repos]]
+owner = "godotengine"
+name = "godot"
+build_command = ["scons", "platform=linux"]

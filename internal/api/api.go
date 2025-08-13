@@ -75,21 +75,17 @@ func handleWebhook(
 		log := LoggerFromContext(r.Context())
 		log.Info("HandleWebhook called")
 
-		repo := store.RepoMeta{
-			Owner: "godotengine",
-			Name:  "godot",
-		}
-		repoID, err := repoStore.Create(r.Context(), repo)
+		repoCfg := cfg.GetRepoConfig("godotengine", "godot")
+		repo, err := repoStore.Get(r.Context(), "godotengine", "godot")
+
+		buildNumber, err := repoStore.IncrementBuildCounter(r.Context(), repo.ID)
 		if err != nil {
 			renderError(w, err, 500)
-			// TODO: don't create the repo here
-			//return
+			return
 		}
 
-		buildNumber, err := repoStore.IncrementBuildCounter(r.Context(), repoID)
-
 		build := store.BuildMeta{
-			RepoID:    repoID,
+			RepoID:    repo.ID,
 			Number:    buildNumber,
 			Link:      "https://github.com/godotengine/godot/commit/bbf29a537f3d2875bba4304b1543d4bf0278b6d9",
 			Ref:       "refs/heads/branch",
@@ -105,8 +101,8 @@ func handleWebhook(
 
 		result, err := bld.Build(
 			logStore,
-			&repo, &build, buildID,
-			[]string{"scons", "platform=linux"},
+			&repo.RepoMeta, &build, buildID,
+			repoCfg.BuildCommand,
 		)
 		if result != nil {
 			log.Info(

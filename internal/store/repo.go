@@ -24,6 +24,7 @@ type Repo struct {
 type RepoStore interface {
 	Create(ctx context.Context, repo RepoMeta) (uint64, error)
 	IncrementBuildCounter(ctx context.Context, repoID uint64) (uint64, error)
+	Get(ctx context.Context, owner, name string) (*Repo, error)
 }
 
 var _ RepoStore = pgRepoStore{}
@@ -48,6 +49,28 @@ func (s pgRepoStore) Create(ctx context.Context, repo RepoMeta) (uint64, error) 
 	).Scan(&newID)
 
 	return newID, err
+}
+
+func (s pgRepoStore) Get(ctx context.Context, owner, name string) (*Repo, error) {
+	var repo Repo
+
+	err := s.conn.QueryRow(
+		ctx,
+		`SELECT id, owner, name, build_counter FROM repos
+		WHERE owner = $1 AND name = $2`,
+		owner,
+		name,
+	).Scan(
+		&repo.ID,
+		&repo.Owner,
+		&repo.Name,
+		&repo.BuildCounter,
+	)
+
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	return &repo, err
 }
 
 func (s pgRepoStore) IncrementBuildCounter(ctx context.Context, repoID uint64) (uint64, error) {

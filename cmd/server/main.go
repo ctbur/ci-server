@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	"github.com/ctbur/ci-server/v2/internal/api"
 	"github.com/ctbur/ci-server/v2/internal/build"
 	"github.com/ctbur/ci-server/v2/internal/config"
@@ -27,7 +28,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer conn.Close(context.Background())
-	store := store.NewPGStore(conn)
+	pgStore := store.NewPGStore(conn)
 
 	ctx := context.Background()
 
@@ -75,11 +76,40 @@ func main() {
 		}
 	}
 
-	cfg := config.Config{}
-	bld := build.NewBuilder("/data")
+	var cfg config.Config
+	if _, err := toml.DecodeFile("ci-config.toml", &cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
+		os.Exit(1)
+	}
+
+	bld := build.NewBuilder(cfg.BuildDir)
+
+	for _, repoCfg := range cfg.Repos {
+		repo, err := pgStore.Repo.Get(ctx, repoCfg.Owner, repoCfg.Name)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to get repo %s/%s: %v\n", repoCfg.Owner, repoCfg.Name, err)
+			os.Exit(1)
+		}
+
+		if repo != nil {
+			continue
+		}
+
+		_, err = pgStore.Repo.Create(
+			ctx,
+			store.RepoMeta{
+				Owner: repoCfg.Owner,
+				Name:  repoCfg.Name,
+			},
+		)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to create repo %s/%s: %v\n", repoCfg.Owner, repoCfg.Name, err)
+			os.Exit(1)
+		}
+	}
 
 	api := api.New()
-	apiHandler := api.Handler(store, cfg, bld)
+	apiHandler := api.Handler(pgStore, cfg, bld)
 
 	server := &http.Server{
 		Addr:    ":8000",

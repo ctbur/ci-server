@@ -9,6 +9,7 @@ services:
     volumes:
       - ./data/builder:/data/
       - ./migrations:/migrations:ro
+      - ./ci-config.toml:/ci-config.toml:ro
     privileged: true
     user: ciserver
     depends_on:
