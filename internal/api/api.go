@@ -11,6 +11,7 @@ import (
 
 	"github.com/ctbur/ci-server/v2/internal/build"
 	"github.com/ctbur/ci-server/v2/internal/config"
+	"github.com/ctbur/ci-server/v2/internal/store"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -21,12 +22,12 @@ func New() API {
 	return API{}
 }
 
-func (a API) Handler(cfg config.Config, bld build.Builder) http.Handler {
+func (a API) Handler(store store.PGStore, cfg config.Config, bld build.Builder) http.Handler {
 	r := chi.NewRouter()
 	r.Use(loggerMiddleware)
 
 	r.Route("/webhook", func(r chi.Router) {
-		r.Post("/", handleWebhook(cfg, bld))
+		r.Post("/", handleWebhook(store.Repo, store.Build, store.Log, cfg, bld))
 	})
 
 	return r
@@ -63,24 +64,65 @@ func loggerMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func handleWebhook(cfg config.Config, bld build.Builder) http.HandlerFunc {
+func handleWebhook(
+	repoStore store.RepoStore,
+	buildStore store.BuildStore,
+	logStore store.LogStore,
+	cfg config.Config,
+	bld build.Builder,
+) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := LoggerFromContext(r.Context())
 		log.Info("HandleWebhook called")
 
-		commitSHA := "bbf29a537f3d2875bba4304b1543d4bf0278b6d9"
-		result, err := bld.Build("godotengine", "godot", "master", commitSHA, []string{"scons", "platform=linux"})
+		repo := store.RepoMeta{
+			Owner: "godotengine",
+			Name:  "godot",
+		}
+		repoID, err := repoStore.Create(r.Context(), repo)
+		if err != nil {
+			renderError(w, err, 500)
+			// TODO: don't create the repo here
+			//return
+		}
+
+		buildNumber, err := repoStore.IncrementBuildCounter(r.Context(), repoID)
+
+		build := store.BuildMeta{
+			RepoID:    repoID,
+			Number:    buildNumber,
+			Link:      "https://github.com/godotengine/godot/commit/bbf29a537f3d2875bba4304b1543d4bf0278b6d9",
+			Ref:       "refs/heads/branch",
+			CommitSHA: "bbf29a537f3d2875bba4304b1543d4bf0278b6d9",
+			Message:   "Build message",
+			Author:    "some author",
+		}
+		buildID, err := buildStore.Create(r.Context(), build)
+		if err != nil {
+			renderError(w, err, 500)
+			return
+		}
+
+		result, err := bld.Build(
+			logStore,
+			&repo, &build, buildID,
+			[]string{"scons", "platform=linux"},
+		)
 		if result != nil {
-			log.Info("Build completed", slog.Bool("success", result.Success), slog.Duration("duration", result.Duration))
+			log.Info(
+				"Build completed",
+				slog.String("status", string(result.Status)),
+			)
 		} else {
-			log.Error("Build failed: %w", result)
+			log.Error("Build failed: %w", slog.Any("error", err))
 		}
 
 		if err != nil {
 			renderError(w, err, 500)
-		} else {
-			renderStruct(w, struct{}{}, 200)
+			return
 		}
+
+		renderStruct(w, struct{}{}, 200)
 	}
 }
 

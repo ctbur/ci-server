@@ -8,12 +8,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"sort"
 	"syscall"
 	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/api"
 	"github.com/ctbur/ci-server/v2/internal/build"
 	"github.com/ctbur/ci-server/v2/internal/config"
+	"github.com/ctbur/ci-server/v2/internal/store"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -24,12 +27,59 @@ func main() {
 		os.Exit(1)
 	}
 	defer conn.Close(context.Background())
+	store := store.NewPGStore(conn)
+
+	ctx := context.Background()
+
+	_, err = conn.Exec(ctx, "DROP SCHEMA public CASCADE;")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to drop schema: %v\n", err)
+		os.Exit(1)
+	}
+
+	_, err = conn.Exec(ctx, "CREATE SCHEMA public;")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create schema: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("Schema 'public' recreated successfully.")
+
+	migrationDir := "./migrations"
+
+	files, err := os.ReadDir(migrationDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to read migrations directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Sort files to ensure they are applied in alphabetical order
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Name() < files[j].Name()
+	})
+
+	for _, file := range files {
+		path := filepath.Join(migrationDir, file.Name())
+
+		sql, err := os.ReadFile(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to read migration file '%s': %v\n", path, err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Running migration: %s\n", file.Name())
+
+		_, err = conn.Exec(ctx, string(sql))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to run migration '%s': %v\n", file.Name(), err)
+			os.Exit(1)
+		}
+	}
 
 	cfg := config.Config{}
 	bld := build.NewBuilder("/data")
 
 	api := api.New()
-	apiHandler := api.Handler(cfg, bld)
+	apiHandler := api.Handler(store, cfg, bld)
 
 	server := &http.Server{
 		Addr:    ":8000",

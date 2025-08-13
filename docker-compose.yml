@@ -8,6 +8,7 @@ services:
       - DATABASE_URL=postgresql://ci-server:123456@postgres:5432/ci
     volumes:
       - ./data/builder:/data/
+      - ./migrations:/migrations:ro
     privileged: true
     user: ciserver
     depends_on:

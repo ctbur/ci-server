@@ -1,23 +1,23 @@
 package build
 
 import (
+	"bufio"
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path"
+	"strconv"
+	"sync"
 	"time"
+
+	"github.com/ctbur/ci-server/v2/internal/store"
 )
 
 const DEFAULT_BRANCH_CACHE = "default"
 const DEFAULT_PERMS = 0700
-
-type BuildState int
-
-const (
-	StateSuccess BuildState = iota
-	StateFailure
-	StateTimeout
-)
 
 type Builder struct {
 	rootDir string
@@ -35,10 +35,10 @@ func debugCmd(cmd *exec.Cmd) {
 	cmd.Stderr = os.Stderr
 }
 
-func (b *Builder) prepareBuildDir(owner, name, branch, commitSHA string) (string, string, error) {
+func (b *Builder) prepareBuildDir(owner, name string, buildID uint64) (string, string, error) {
 	// Create a dedicated build dir
 	repoDir := fmt.Sprintf("%s:%s", owner, name)
-	buildDir := path.Join(b.rootDir, repoDir, commitSHA)
+	buildDir := path.Join(b.rootDir, repoDir, strconv.FormatUint(buildID, 10))
 	if err := os.MkdirAll(buildDir, DEFAULT_PERMS); err != nil {
 		return "", "", fmt.Errorf("failed to obtain repo build dir '%s': %w", buildDir, err)
 	}
@@ -93,25 +93,76 @@ func checkout(owner, name, commitSHA, buildDir string) error {
 	return nil
 }
 
-type BuildResult struct {
-	Duration time.Duration
-	Success  bool
-}
-
-func build(buildDir string, cmd []string) (*BuildResult, error) {
+func runBuild(
+	logStore store.LogStore,
+	buildID uint64,
+	buildDir string,
+	cmd []string,
+) (*store.BuildState, error) {
 	buildCmd := exec.Command(cmd[0], cmd[1:]...)
 	buildCmd.Dir = buildDir
-	debugCmd(buildCmd)
 
-	start := time.Now()
-	if err := buildCmd.Run(); err != nil && err.(*exec.ExitError) == nil {
-		return nil, fmt.Errorf("failed to build repository: %w", err)
+	reader, writer := io.Pipe()
+
+	// Combine stdout and stderr
+	buildCmd.Stdout = writer
+	buildCmd.Stderr = writer
+
+	if err := buildCmd.Start(); err != nil && err.(*exec.ExitError) == nil {
+		return nil, fmt.Errorf("failed to start build command: %w", err)
 	}
 
-	return &BuildResult{
-		Duration: time.Since(start),
-		Success:  buildCmd.ProcessState.ExitCode() == 0,
-	}, nil
+	errChan := make(chan error, 2)
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Read from the pipe and store as logs
+	go func() {
+		defer wg.Done()
+		defer reader.Close()
+
+		scanner := bufio.NewScanner(reader)
+		for scanner.Scan() {
+			line := scanner.Text()
+			log := store.LogEntry{
+				BuildID:   buildID,
+				Timestamp: time.Now(),
+				Text:      line,
+			}
+			logStore.Create(context.TODO(), log)
+		}
+
+		if err := scanner.Err(); err != nil {
+			errChan <- fmt.Errorf("failed to execute build command: %w", err)
+		} else {
+			errChan <- nil
+		}
+	}()
+
+	// Wait for the command to finish
+	go func() {
+		defer wg.Done()
+		defer writer.Close()
+
+		if err := buildCmd.Wait(); err != nil && err.(*exec.ExitError) == nil {
+			errChan <- fmt.Errorf("failed to execute build command: %w", err)
+		} else {
+			errChan <- nil
+		}
+	}()
+
+	wg.Wait()
+
+	status := store.BuildStatusSuccess
+	err := errors.Join(<-errChan, <-errChan)
+	if err != nil {
+		status = store.BuildStatusError
+	} else if buildCmd.ProcessState.ExitCode() != 0 {
+		status = store.BuildStatusFailed
+	}
+	return &store.BuildState{
+		Status: status,
+	}, err
 }
 
 func (b *Builder) cleanup(branch, buildDir, cacheDir string) error {
@@ -133,19 +184,25 @@ func (b *Builder) cleanup(branch, buildDir, cacheDir string) error {
 	return nil
 }
 
-func (b *Builder) Build(owner, name, branch, commitSHA string, cmd []string) (*BuildResult, error) {
-	buildDir, cacheDir, err := b.prepareBuildDir(owner, name, branch, commitSHA)
+func (b *Builder) Build(
+	logStore store.LogStore,
+	repo *store.RepoMeta,
+	bld *store.BuildMeta,
+	bldID uint64,
+	cmd []string,
+) (*store.BuildState, error) {
+	buildDir, cacheDir, err := b.prepareBuildDir(repo.Owner, repo.Name, bldID)
 	if err != nil {
 		return nil, err
 	}
-	if err := checkout(owner, name, commitSHA, buildDir); err != nil {
+	if err := checkout(repo.Owner, repo.Name, bld.CommitSHA, buildDir); err != nil {
 		return nil, err
 	}
-	result, err := build(buildDir, cmd)
+	result, err := runBuild(logStore, bldID, buildDir, cmd)
 	if err != nil {
 		return nil, err
 	}
-	if err := b.cleanup(branch, buildDir, cacheDir); err != nil {
+	if err := b.cleanup(bld.Ref, buildDir, cacheDir); err != nil {
 		return nil, err
 	}
 	return result, nil
