@@ -16,6 +16,7 @@ type LogEntry struct {
 
 type LogStore interface {
 	Create(ctx context.Context, log LogEntry) error
+	Get(ctx context.Context, buildID uint64, fromLogID uint64) ([]LogEntry, error)
 }
 
 type pgLogStore struct {
@@ -37,4 +38,22 @@ func (s pgLogStore) Create(ctx context.Context, log LogEntry) error {
 		log.Text,
 	)
 	return err
+}
+
+func (s pgLogStore) Get(ctx context.Context, buildID uint64, fromLogID uint64) ([]LogEntry, error) {
+	rows, err := s.conn.Query(
+		ctx,
+		`SELECT id, timestamp, text FROM logs WHERE build_id = $1 AND id >= $2 ORDER BY id ASC`,
+		buildID,
+		fromLogID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (LogEntry, error) {
+		log := LogEntry{BuildID: buildID}
+		err := row.Scan(&log.ID, &log.Timestamp, &log.Text)
+		return log, err
+	})
 }

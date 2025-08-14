@@ -1,67 +1,23 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
-	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/build"
 	"github.com/ctbur/ci-server/v2/internal/config"
 	"github.com/ctbur/ci-server/v2/internal/store"
-	"github.com/go-chi/chi/v5"
+	"github.com/ctbur/ci-server/v2/internal/web/wlog"
 )
 
-type API struct {
-}
+func Handler(cfg config.Config, pgStore store.PGStore, bld build.Builder) http.Handler {
+	mux := http.NewServeMux()
 
-func New() API {
-	return API{}
-}
+	mux.HandleFunc("POST /webhook", handleWebhook(pgStore.Repo, pgStore.Build, pgStore.Log, cfg, bld))
 
-func (a API) Handler(store store.PGStore, cfg config.Config, bld build.Builder) http.Handler {
-	r := chi.NewRouter()
-	r.Use(loggerMiddleware)
-
-	r.Route("/webhook", func(r chi.Router) {
-		r.Post("/", handleWebhook(store.Repo, store.Build, store.Log, cfg, bld))
-	})
-
-	return r
-}
-
-type loggerKey struct{}
-
-func LoggerFromContext(ctx context.Context) *slog.Logger {
-	logger := ctx.Value(loggerKey{})
-	return logger.(*slog.Logger)
-}
-
-func loggerMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		log := slog.New(slog.NewTextHandler(os.Stdout, nil))
-		log = log.With(
-			slog.String("method", r.Method),
-			slog.String("request", r.RequestURI),
-		)
-
-		ctx = context.WithValue(ctx, loggerKey{}, log)
-		start := time.Now()
-		next.ServeHTTP(w, r.WithContext(ctx))
-		end := time.Now()
-
-		duration := end.Sub(start).Milliseconds()
-
-		log.Info(
-			"request handled",
-			slog.Int64("latency", duration),
-			slog.String("time", end.Format(time.RFC3339)),
-		)
-	})
+	return mux
 }
 
 func handleWebhook(
@@ -72,7 +28,7 @@ func handleWebhook(
 	bld build.Builder,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		log := LoggerFromContext(r.Context())
+		log := wlog.FromContext(r.Context())
 		log.Info("HandleWebhook called")
 
 		repoCfg := cfg.GetRepoConfig("godotengine", "godot")

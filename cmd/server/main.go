@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/ctbur/ci-server/v2/internal/api"
 	"github.com/ctbur/ci-server/v2/internal/build"
 	"github.com/ctbur/ci-server/v2/internal/config"
 	"github.com/ctbur/ci-server/v2/internal/store"
+	"github.com/ctbur/ci-server/v2/internal/web"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -108,12 +108,9 @@ func main() {
 		}
 	}
 
-	api := api.New()
-	apiHandler := api.Handler(pgStore, cfg, bld)
-
 	server := &http.Server{
 		Addr:    ":8000",
-		Handler: apiHandler,
+		Handler: web.Handler(cfg, pgStore, bld),
 	}
 
 	go func() {
