@@ -108,8 +108,10 @@ func runBuild(
 	buildCmd.Stdout = writer
 	buildCmd.Stderr = writer
 
-	if err := buildCmd.Start(); err != nil && err.(*exec.ExitError) == nil {
-		return nil, fmt.Errorf("failed to start build command: %w", err)
+	if err := buildCmd.Start(); err != nil {
+		if _, ok := err.(*exec.ExitError); !ok {
+			return nil, fmt.Errorf("failed to start build command: %w", err)
+		}
 	}
 
 	errChan := make(chan error, 2)

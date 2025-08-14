@@ -18,30 +18,55 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/config"
 	"github.com/ctbur/ci-server/v2/internal/store"
 	"github.com/ctbur/ci-server/v2/internal/web"
+	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/jackc/pgx/v5"
 )
 
 func main() {
-	conn, err := pgx.Connect(context.Background(), os.Getenv("DATABASE_URL"))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
-		os.Exit(1)
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 	}
-	defer conn.Close(context.Background())
-	pgStore := store.NewPGStore(conn)
+}
+
+func run() error {
+	postgres := embeddedpostgres.NewDatabase(
+		embeddedpostgres.DefaultConfig().
+			Username("ci-server").
+			Password("123456").
+			Database("ci").
+			CachePath("./data/postgres/").
+			RuntimePath("./data/postgres/extracted").
+			DataPath("./data/postgres/extracted/data").
+			BinariesPath("./data/postgres/extracted"),
+	)
+	databaseUrl := "postgresql://ci-server:123456@localhost:5432/ci"
+	err := postgres.Start()
+	if err != nil {
+		return fmt.Errorf("Unable to start embedded Postgres: %v\n", err)
+	}
+	defer func() {
+		err := postgres.Stop()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Unable to stop embedded Postgres: %v\n", err)
+		}
+	}()
 
 	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, databaseUrl)
+	if err != nil {
+		return fmt.Errorf("Unable to connect to database: %v\n", err)
+	}
+	defer conn.Close(ctx)
+	pgStore := store.NewPGStore(conn)
 
 	_, err = conn.Exec(ctx, "DROP SCHEMA public CASCADE;")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to drop schema: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to drop schema: %v\n", err)
 	}
 
 	_, err = conn.Exec(ctx, "CREATE SCHEMA public;")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create schema: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to create schema: %v\n", err)
 	}
 	fmt.Println("Schema 'public' recreated successfully.")
 
@@ -49,8 +74,7 @@ func main() {
 
 	files, err := os.ReadDir(migrationDir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to read migrations directory: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to read migrations directory: %v\n", err)
 	}
 
 	// Sort files to ensure they are applied in alphabetical order
@@ -63,23 +87,20 @@ func main() {
 
 		sql, err := os.ReadFile(path)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to read migration file '%s': %v\n", path, err)
-			os.Exit(1)
+			return fmt.Errorf("Failed to read migration file '%s': %v\n", path, err)
 		}
 
 		fmt.Printf("Running migration: %s\n", file.Name())
 
 		_, err = conn.Exec(ctx, string(sql))
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to run migration '%s': %v\n", file.Name(), err)
-			os.Exit(1)
+			return fmt.Errorf("Failed to run migration '%s': %v\n", file.Name(), err)
 		}
 	}
 
 	var cfg config.Config
 	if _, err := toml.DecodeFile("ci-config.toml", &cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("Failed to load config: %v\n", err)
 	}
 
 	bld := build.NewBuilder(cfg.BuildDir)
@@ -87,8 +108,7 @@ func main() {
 	for _, repoCfg := range cfg.Repos {
 		repo, err := pgStore.Repo.Get(ctx, repoCfg.Owner, repoCfg.Name)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to get repo %s/%s: %v\n", repoCfg.Owner, repoCfg.Name, err)
-			os.Exit(1)
+			return fmt.Errorf("Failed to get repo %s/%s: %v\n", repoCfg.Owner, repoCfg.Name, err)
 		}
 
 		if repo != nil {
@@ -103,8 +123,7 @@ func main() {
 			},
 		)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to create repo %s/%s: %v\n", repoCfg.Owner, repoCfg.Name, err)
-			os.Exit(1)
+			return fmt.Errorf("Failed to create repo %s/%s: %v\n", repoCfg.Owner, repoCfg.Name, err)
 		}
 	}
 
@@ -131,4 +150,5 @@ func main() {
 	}
 
 	slog.Info("Shutdown complete.")
+	return nil
 }
