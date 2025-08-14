@@ -1,6 +1,10 @@
 build_dir = "./data/build"
 
 [[repos]]
-owner = "godotengine"
-name = "godot"
-build_command = ["scons", "platform=linux"]
+owner = "encode"
+name = "httpx"
+build_command = [
+    "sh",
+    "-c",
+    "./scripts/install && ./scripts/check && ./scripts/build && ./scripts/test && ./scripts/coverage",
+]

@@ -37,7 +37,7 @@ func debugCmd(cmd *exec.Cmd) {
 
 func (b *Builder) prepareBuildDir(owner, name string, buildID uint64) (string, string, error) {
 	// Create a dedicated build dir
-	repoDir := fmt.Sprintf("%s:%s", owner, name)
+	repoDir := fmt.Sprintf("%s/%s", owner, name)
 	buildDir := path.Join(b.rootDir, repoDir, strconv.FormatUint(buildID, 10))
 	if err := os.MkdirAll(buildDir, DEFAULT_PERMS); err != nil {
 		return "", "", fmt.Errorf("failed to obtain repo build dir '%s': %w", buildDir, err)

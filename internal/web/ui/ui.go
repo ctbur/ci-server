@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -30,7 +31,7 @@ func handleBuilds(
 
 		logs, err := logStore.Get(r.Context(), buildID, 0)
 		if err != nil {
-			http.Error(w, "Unable to fetch logs", http.StatusNotFound)
+			http.Error(w, fmt.Sprintf("Unable to fetch logs: %v", err), http.StatusNotFound)
 			return
 		}
 

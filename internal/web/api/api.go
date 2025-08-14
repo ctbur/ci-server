@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 
@@ -20,6 +21,12 @@ func Handler(cfg config.Config, pgStore store.PGStore, bld build.Builder) http.H
 	return mux
 }
 
+type WebhookPayload struct {
+	Owner     string `json:"owner"`
+	Name      string `json:"name"`
+	CommitSHA string `json:"commit_sha"`
+}
+
 func handleWebhook(
 	repoStore store.RepoStore,
 	buildStore store.BuildStore,
@@ -31,27 +38,49 @@ func handleWebhook(
 		log := wlog.FromContext(r.Context())
 		log.Info("HandleWebhook called")
 
-		repoCfg := cfg.GetRepoConfig("godotengine", "godot")
-		repo, err := repoStore.Get(r.Context(), "godotengine", "godot")
+		payload, err := decodeJSON[WebhookPayload](r.Body)
+		if err != nil {
+			renderError(w, err, http.StatusBadRequest)
+			return
+		}
+
+		repoCfg := cfg.GetRepoConfig(payload.Owner, payload.Name)
+		if repoCfg == nil {
+			renderError(
+				w,
+				fmt.Errorf("Repository %s/%s is not configured", payload.Owner, payload.Name),
+				http.StatusNotFound,
+			)
+			return
+		}
+		repo, err := repoStore.Get(r.Context(), payload.Owner, payload.Name)
+		if err != nil {
+			renderError(
+				w,
+				fmt.Errorf("Failed to find repository %s/%s in database", payload.Owner, payload.Name),
+				http.StatusNotFound,
+			)
+			return
+		}
 
 		buildNumber, err := repoStore.IncrementBuildCounter(r.Context(), repo.ID)
 		if err != nil {
-			renderError(w, err, 500)
+			renderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
 		build := store.BuildMeta{
 			RepoID:    repo.ID,
 			Number:    buildNumber,
-			Link:      "https://github.com/godotengine/godot/commit/bbf29a537f3d2875bba4304b1543d4bf0278b6d9",
+			Link:      "some link",
 			Ref:       "refs/heads/branch",
-			CommitSHA: "bbf29a537f3d2875bba4304b1543d4bf0278b6d9",
+			CommitSHA: payload.CommitSHA,
 			Message:   "Build message",
 			Author:    "some author",
 		}
 		buildID, err := buildStore.Create(r.Context(), build)
 		if err != nil {
-			renderError(w, err, 500)
+			renderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
@@ -66,18 +95,29 @@ func handleWebhook(
 				slog.String("status", string(result.Status)),
 			)
 		} else {
-			log.Error("Build failed: %w", slog.Any("error", err))
+			log.Error("Build failed", slog.Any("error", err))
 		}
 
 		if err != nil {
-			renderError(w, err, 500)
+			renderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
-		renderStruct(w, struct{}{}, 200)
+		renderStruct(w, struct{}{}, http.StatusOK)
 	}
 }
 
+func decodeJSON[T any](body io.Reader) (*T, error) {
+	decoder := json.NewDecoder(body)
+	decoder.DisallowUnknownFields()
+
+	var v T
+	if err := decoder.Decode(&v); err != nil {
+		return nil, fmt.Errorf("failed to decode JSON: %w", err)
+	}
+
+	return &v, nil
+}
 func renderStruct(w http.ResponseWriter, v any, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
