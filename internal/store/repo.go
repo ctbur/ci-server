@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -67,7 +68,7 @@ func (s pgRepoStore) Get(ctx context.Context, owner, name string) (*Repo, error)
 		&repo.BuildCounter,
 	)
 
-	if err == pgx.ErrNoRows {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
 	return &repo, err
