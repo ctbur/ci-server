@@ -93,8 +93,12 @@ func checkout(owner, name, commitSHA, buildDir string) error {
 	return nil
 }
 
+type LogConsumer interface {
+	CreateLog(ctx context.Context, log store.LogEntry) error
+}
+
 func runBuild(
-	logStore store.LogStore,
+	logConsumer LogConsumer,
 	buildID uint64,
 	buildDir string,
 	cmd []string,
@@ -131,7 +135,7 @@ func runBuild(
 				Timestamp: time.Now(),
 				Text:      line,
 			}
-			logStore.Create(context.TODO(), log)
+			logConsumer.CreateLog(context.TODO(), log)
 		}
 
 		if err := scanner.Err(); err != nil {
@@ -187,7 +191,7 @@ func (b *Builder) cleanup(branch, buildDir, cacheDir string) error {
 }
 
 func (b *Builder) Build(
-	logStore store.LogStore,
+	logConsumer LogConsumer,
 	repo *store.RepoMeta,
 	bld *store.BuildMeta,
 	bldID uint64,
@@ -200,7 +204,7 @@ func (b *Builder) Build(
 	if err := checkout(repo.Owner, repo.Name, bld.CommitSHA, buildDir); err != nil {
 		return nil, err
 	}
-	result, err := runBuild(logStore, bldID, buildDir, cmd)
+	result, err := runBuild(logConsumer, bldID, buildDir, cmd)
 	if err != nil {
 		return nil, err
 	}

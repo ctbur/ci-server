@@ -3,8 +3,6 @@ package store
 import (
 	"context"
 	"time"
-
-	"github.com/jackc/pgx/v5"
 )
 
 type BuildStatus string
@@ -49,17 +47,7 @@ type Build struct {
 	BuildState
 }
 
-type BuildStore interface {
-	Create(ctx context.Context, build BuildMeta) (uint64, error)
-}
-
-var _ BuildStore = pgBuildStore{}
-
-type pgBuildStore struct {
-	conn *pgx.Conn
-}
-
-func (s pgBuildStore) Create(ctx context.Context, build BuildMeta) (uint64, error) {
+func (s PGStore) CreateBuild(ctx context.Context, build BuildMeta) (uint64, error) {
 	var newID uint64
 
 	err := s.conn.QueryRow(

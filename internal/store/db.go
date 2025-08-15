@@ -59,7 +59,7 @@ func ApplyMigrations(log *slog.Logger, ctx context.Context, conn *pgx.Conn, migr
 
 func InitDatabase(ctx context.Context, pgStore *PGStore, cfg *config.Config) error {
 	for _, repoCfg := range cfg.Repos {
-		repo, err := pgStore.Repo.Get(ctx, repoCfg.Owner, repoCfg.Name)
+		repo, err := pgStore.GetRepo(ctx, repoCfg.Owner, repoCfg.Name)
 		if err != nil {
 			return fmt.Errorf("failed to get repo %s/%s: %v\n", repoCfg.Owner, repoCfg.Name, err)
 		}
@@ -68,7 +68,7 @@ func InitDatabase(ctx context.Context, pgStore *PGStore, cfg *config.Config) err
 			continue
 		}
 
-		_, err = pgStore.Repo.Create(
+		_, err = pgStore.CreateRepo(
 			ctx,
 			RepoMeta{
 				Owner: repoCfg.Owner,

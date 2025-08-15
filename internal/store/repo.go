@@ -28,13 +28,7 @@ type RepoStore interface {
 	Get(ctx context.Context, owner, name string) (*Repo, error)
 }
 
-var _ RepoStore = pgRepoStore{}
-
-type pgRepoStore struct {
-	conn *pgx.Conn
-}
-
-func (s pgRepoStore) Create(ctx context.Context, repo RepoMeta) (uint64, error) {
+func (s PGStore) CreateRepo(ctx context.Context, repo RepoMeta) (uint64, error) {
 	var newID uint64
 
 	err := s.conn.QueryRow(
@@ -52,7 +46,7 @@ func (s pgRepoStore) Create(ctx context.Context, repo RepoMeta) (uint64, error) 
 	return newID, err
 }
 
-func (s pgRepoStore) Get(ctx context.Context, owner, name string) (*Repo, error) {
+func (s PGStore) GetRepo(ctx context.Context, owner, name string) (*Repo, error) {
 	var repo Repo
 
 	err := s.conn.QueryRow(
@@ -74,7 +68,7 @@ func (s pgRepoStore) Get(ctx context.Context, owner, name string) (*Repo, error)
 	return &repo, err
 }
 
-func (s pgRepoStore) IncrementBuildCounter(ctx context.Context, repoID uint64) (uint64, error) {
+func (s PGStore) IncrementBuildCounter(ctx context.Context, repoID uint64) (uint64, error) {
 	var newBuildCounter uint64
 
 	err := s.conn.QueryRow(

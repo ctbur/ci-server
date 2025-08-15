@@ -14,16 +14,7 @@ type LogEntry struct {
 	Text      string
 }
 
-type LogStore interface {
-	Create(ctx context.Context, log LogEntry) error
-	Get(ctx context.Context, buildID uint64, fromLogID uint64) ([]LogEntry, error)
-}
-
-type pgLogStore struct {
-	conn *pgx.Conn
-}
-
-func (s pgLogStore) Create(ctx context.Context, log LogEntry) error {
+func (s PGStore) CreateLog(ctx context.Context, log LogEntry) error {
 	_, err := s.conn.Exec(
 		ctx,
 		`INSERT INTO logs (
@@ -40,7 +31,7 @@ func (s pgLogStore) Create(ctx context.Context, log LogEntry) error {
 	return err
 }
 
-func (s pgLogStore) Get(ctx context.Context, buildID uint64, fromLogID uint64) ([]LogEntry, error) {
+func (s PGStore) GetLogs(ctx context.Context, buildID uint64, fromLogID uint64) ([]LogEntry, error) {
 	rows, err := s.conn.Query(
 		ctx,
 		`SELECT id, timestamp, text FROM logs WHERE build_id = $1 AND id >= $2 ORDER BY id ASC`,

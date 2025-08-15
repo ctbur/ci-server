@@ -13,10 +13,10 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/web/wlog"
 )
 
-func Handler(cfg config.Config, pgStore store.PGStore, bld build.Builder) http.Handler {
+func Handler(cfg config.Config, s store.PGStore, bld build.Builder) http.Handler {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("POST /webhook", handleWebhook(pgStore.Repo, pgStore.Build, pgStore.Log, cfg, bld))
+	mux.HandleFunc("POST /webhook", handleWebhook(s, cfg, bld))
 
 	return mux
 }
@@ -28,9 +28,7 @@ type WebhookPayload struct {
 }
 
 func handleWebhook(
-	repoStore store.RepoStore,
-	buildStore store.BuildStore,
-	logStore store.LogStore,
+	s store.PGStore,
 	cfg config.Config,
 	bld build.Builder,
 ) http.HandlerFunc {
@@ -53,7 +51,7 @@ func handleWebhook(
 			)
 			return
 		}
-		repo, err := repoStore.Get(r.Context(), payload.Owner, payload.Name)
+		repo, err := s.GetRepo(r.Context(), payload.Owner, payload.Name)
 		if err != nil {
 			renderError(
 				w,
@@ -63,7 +61,7 @@ func handleWebhook(
 			return
 		}
 
-		buildNumber, err := repoStore.IncrementBuildCounter(r.Context(), repo.ID)
+		buildNumber, err := s.IncrementBuildCounter(r.Context(), repo.ID)
 		if err != nil {
 			renderError(w, err, http.StatusInternalServerError)
 			return
@@ -78,14 +76,14 @@ func handleWebhook(
 			Message:   "Build message",
 			Author:    "some author",
 		}
-		buildID, err := buildStore.Create(r.Context(), build)
+		buildID, err := s.CreateBuild(r.Context(), build)
 		if err != nil {
 			renderError(w, err, http.StatusInternalServerError)
 			return
 		}
 
 		result, err := bld.Build(
-			logStore,
+			s,
 			&repo.RepoMeta, &build, buildID,
 			repoCfg.BuildCommand,
 		)

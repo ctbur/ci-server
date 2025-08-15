@@ -9,19 +9,22 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/store"
 )
 
-func Handler(cfg config.Config, pgStore store.PGStore) http.Handler {
+func Handler(cfg config.Config, s store.PGStore) http.Handler {
 	mux := http.NewServeMux()
 
-	mux.Handle("GET /builds/{build_id}", handleBuilds(pgStore.Repo, pgStore.Build, pgStore.Log))
+	mux.Handle("GET /{$}", handleBuilds(s))
+	mux.Handle("GET /builds/{build_id}", handleBuildDetails(s))
 
 	return mux
 }
 
-func handleBuilds(
-	repoStore store.RepoStore,
-	buildStore store.BuildStore,
-	logStore store.LogStore,
-) http.HandlerFunc {
+func handleBuilds(s store.PGStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+	}
+}
+
+func handleBuildDetails(s store.PGStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		buildID, err := strconv.ParseUint(r.PathValue("build_id"), 10, 64)
 		if err != nil {
@@ -29,7 +32,7 @@ func handleBuilds(
 			return
 		}
 
-		logs, err := logStore.Get(r.Context(), buildID, 0)
+		logs, err := s.GetLogs(r.Context(), buildID, 0)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Unable to fetch logs: %v", err), http.StatusNotFound)
 			return
