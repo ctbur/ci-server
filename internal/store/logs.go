@@ -41,6 +41,7 @@ func (s PGStore) GetLogs(ctx context.Context, buildID uint64, fromLogID uint64) 
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (LogEntry, error) {
 		log := LogEntry{BuildID: buildID}

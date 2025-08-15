@@ -36,8 +36,8 @@ type BuildMeta struct {
 
 type BuildState struct {
 	Created  time.Time
-	Started  time.Time
-	Finished time.Time
+	Started  *time.Time
+	Finished *time.Time
 	Status   BuildStatus
 }
 
