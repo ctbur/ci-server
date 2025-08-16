@@ -39,6 +39,7 @@ func RunServer(log *slog.Logger, handler http.Handler, port int) error {
 
 	serverErrChan := make(chan error, 1)
 	go func() {
+		log.Info("Starting server...")
 		if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			serverErrChan <- fmt.Errorf("server error: %w", err)
 		}

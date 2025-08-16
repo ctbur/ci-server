@@ -27,7 +27,6 @@ func DropAllData(ctx context.Context, conn *pgx.Conn) error {
 }
 
 func ApplyMigrations(log *slog.Logger, ctx context.Context, conn *pgx.Conn, migrationsDir string) error {
-
 	files, err := os.ReadDir(migrationsDir)
 	if err != nil {
 		return fmt.Errorf("failed to read migrations directory: %v\n", err)
@@ -38,7 +37,34 @@ func ApplyMigrations(log *slog.Logger, ctx context.Context, conn *pgx.Conn, migr
 		return files[i].Name() < files[j].Name()
 	})
 
+	_, err = conn.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS migrations (
+			name VARCHAR(255) PRIMARY KEY,
+			applied_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+		);
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to create migrations table: %w", err)
+	}
+
 	for _, file := range files {
+		tx, err := conn.Begin(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to begin transaction: %w", err)
+		}
+		defer tx.Rollback(ctx)
+
+		var count int
+		err = tx.QueryRow(ctx, "SELECT COUNT(*) FROM migrations WHERE name = $1", file.Name()).Scan(&count)
+		if err != nil {
+			return fmt.Errorf("failed to check migration status: %w", err)
+		}
+
+		if count > 0 {
+			slog.Info("Migration already applied", slog.String("file", file.Name()))
+			continue
+		}
+
 		path := filepath.Join(migrationsDir, file.Name())
 
 		sql, err := os.ReadFile(path)
@@ -48,9 +74,19 @@ func ApplyMigrations(log *slog.Logger, ctx context.Context, conn *pgx.Conn, migr
 
 		slog.Info("Running migration", slog.String("file", file.Name()))
 
-		_, err = conn.Exec(ctx, string(sql))
+		_, err = tx.Exec(ctx, string(sql))
 		if err != nil {
 			return fmt.Errorf("failed to run migration '%s': %v\n", file.Name(), err)
+		}
+
+		_, err = tx.Exec(ctx, "INSERT INTO migrations (name) VALUES ($1)", file.Name())
+		if err != nil {
+			return fmt.Errorf("failed to record migration '%s': %w", file.Name(), err)
+		}
+
+		// Commit the transaction to finalize all changes.
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("failed to commit transaction: %w", err)
 		}
 	}
 

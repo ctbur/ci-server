@@ -31,7 +31,8 @@ func run() error {
 			Database("ci").
 			CachePath("./data/postgres/").
 			RuntimePath("./data/postgres/extracted").
-			DataPath("./data/postgres/extracted/data").
+			// Configures data to be persistent because DataPath is outside RuntimePath
+			DataPath("./data/postgres/data").
 			BinariesPath("./data/postgres/extracted"),
 	)
 	databaseUrl := "postgresql://ci-server:123456@localhost:5432/ci"
