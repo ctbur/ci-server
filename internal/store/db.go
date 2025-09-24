@@ -68,7 +68,7 @@ func ApplyMigrations(log *slog.Logger, ctx context.Context, pool *pgxpool.Pool, 
 		}
 
 		if count > 0 {
-			slog.Info("Migration already applied", slog.String("file", file.Name()))
+			log.InfoContext(ctx, "Migration already applied", slog.String("file", file.Name()))
 			continue
 		}
 
@@ -79,7 +79,7 @@ func ApplyMigrations(log *slog.Logger, ctx context.Context, pool *pgxpool.Pool, 
 			return fmt.Errorf("failed to read migration file '%s': %v\n", path, err)
 		}
 
-		slog.Info("Running migration", slog.String("file", file.Name()))
+		log.InfoContext(ctx, "Running migration", slog.String("file", file.Name()))
 
 		_, err = tx.Exec(ctx, string(sql))
 		if err != nil {

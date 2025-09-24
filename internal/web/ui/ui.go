@@ -56,18 +56,44 @@ func handleBuilds(s store.PGStore) http.HandlerFunc {
 
 func handleBuildDetails(s store.PGStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
 		buildID, err := strconv.ParseUint(r.PathValue("build_id"), 10, 64)
 		if err != nil {
 			http.Error(w, "Invalid build ID", http.StatusNotFound)
 			return
 		}
 
-		logs, err := s.GetLogs(r.Context(), buildID, 0)
+		build, err := s.GetBuild(ctx, buildID)
 		if err != nil {
-			http.Error(w, "Failed to fetch logs", http.StatusNotFound)
-			slog.Error("Failed to fetch logs", slog.Any("error", err))
+			http.Error(w, "Failed to fetch build", http.StatusInternalServerError)
+			slog.ErrorContext(ctx, "Failed to fetch build", slog.Any("error", err))
 			return
 		}
+
+		if build == nil {
+			http.Error(w, "Build not found", http.StatusNotFound)
+			return
+		}
+
+		logs, err := s.GetLogs(ctx, buildID, 0)
+		if err != nil {
+			http.Error(w, "Failed to fetch logs", http.StatusInternalServerError)
+			slog.ErrorContext(ctx, "Failed to fetch logs", slog.Any("error", err))
+			return
+		}
+
+		fmt.Fprintf(w, "Created: %s\n", build.Created.Format("2006-01-02 15:04:05"))
+		if build.Started != nil {
+			fmt.Fprintf(w, "Started: %s\n", build.Started.Format("2006-01-02 15:04:05"))
+		}
+		if build.Finished != nil {
+			fmt.Fprintf(w, "Started: %s\n", build.Finished.Format("2006-01-02 15:04:05"))
+		}
+		if build.Result != nil {
+			fmt.Fprintf(w, "Result: %s", *build.Result)
+		}
+		fmt.Fprint(w, "\n")
 
 		for i := range logs {
 			w.Write([]byte(logs[i].Text))

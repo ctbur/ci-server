@@ -148,6 +148,49 @@ func (s PGStore) CreateBuild(ctx context.Context, build BuildMeta) (uint64, erro
 	return newID, err
 }
 
+func (s PGStore) GetBuild(ctx context.Context, buildID uint64) (*Build, error) {
+	var build Build
+
+	err := s.pool.QueryRow(
+		ctx,
+		`SELECT
+			id,
+			repo_id,
+			number,
+			link,
+			ref,
+			commit_sha,
+			message,
+			author,
+			created,
+			started,
+			finished,
+			result
+		FROM builds
+		WHERE id = $1`,
+		buildID,
+	).Scan(
+		&build.ID,
+		&build.RepoID,
+		&build.Number,
+		&build.Link,
+		&build.Ref,
+		&build.CommitSHA,
+		&build.Message,
+		&build.Author,
+		&build.Created,
+		&build.Started,
+		&build.Finished,
+		&build.Result,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+
+	return &build, err
+}
+
 func (s PGStore) UpdateBuildState(ctx context.Context, buildID uint64, state BuildState) error {
 	_, err := s.pool.Exec(
 		ctx,
