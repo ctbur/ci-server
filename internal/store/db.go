@@ -10,6 +10,7 @@ import (
 
 	"github.com/ctbur/ci-server/v2/internal/config"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func DropAllData(ctx context.Context, conn *pgx.Conn) error {
@@ -26,7 +27,13 @@ func DropAllData(ctx context.Context, conn *pgx.Conn) error {
 	return nil
 }
 
-func ApplyMigrations(log *slog.Logger, ctx context.Context, conn *pgx.Conn, migrationsDir string) error {
+func ApplyMigrations(log *slog.Logger, ctx context.Context, pool *pgxpool.Pool, migrationsDir string) error {
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to aqcuire connection to run migrations: %v", err)
+	}
+	defer conn.Release()
+
 	files, err := os.ReadDir(migrationsDir)
 	if err != nil {
 		return fmt.Errorf("failed to read migrations directory: %v\n", err)

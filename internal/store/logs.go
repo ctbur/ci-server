@@ -15,7 +15,7 @@ type LogEntry struct {
 }
 
 func (s PGStore) CreateLog(ctx context.Context, log LogEntry) error {
-	_, err := s.conn.Exec(
+	_, err := s.pool.Exec(
 		ctx,
 		`INSERT INTO logs (
 			build_id,
@@ -32,7 +32,7 @@ func (s PGStore) CreateLog(ctx context.Context, log LogEntry) error {
 }
 
 func (s PGStore) GetLogs(ctx context.Context, buildID uint64, fromLogID uint64) ([]LogEntry, error) {
-	rows, err := s.conn.Query(
+	rows, err := s.pool.Query(
 		ctx,
 		`SELECT id, timestamp, text FROM logs WHERE build_id = $1 AND id >= $2 ORDER BY id ASC`,
 		buildID,

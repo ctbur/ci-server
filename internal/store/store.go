@@ -4,13 +4,14 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type PGStore struct {
-	conn *pgx.Conn
+	pool *pgxpool.Pool
 }
 
-func NewPGStore(conn *pgx.Conn) PGStore {
+func NewPGStore(conn *pgxpool.Pool) PGStore {
 	return PGStore{conn}
 }
 
@@ -20,7 +21,7 @@ type BuildWithRepoMeta struct {
 }
 
 func (s PGStore) ListBuilds(ctx context.Context) ([]BuildWithRepoMeta, error) {
-	rows, err := s.conn.Query(
+	rows, err := s.pool.Query(
 		ctx,
 		`SELECT
 			b.id,
@@ -71,7 +72,7 @@ func (s PGStore) ListBuilds(ctx context.Context) ([]BuildWithRepoMeta, error) {
 func (s PGStore) GetPendingBuilds(
 	ctx context.Context,
 ) ([]BuildWithRepoMeta, error) {
-	rows, err := s.conn.Query(
+	rows, err := s.pool.Query(
 		ctx,
 		`SELECT
 			b.id,

@@ -46,7 +46,7 @@ type Build struct {
 func (s PGStore) CreateBuild(ctx context.Context, build BuildMeta) (uint64, error) {
 	var newID uint64
 
-	err := s.conn.QueryRow(
+	err := s.pool.QueryRow(
 		ctx,
 		`INSERT INTO builds (
 			repo_id,
@@ -74,11 +74,11 @@ func (s PGStore) CreateBuild(ctx context.Context, build BuildMeta) (uint64, erro
 }
 
 func (s PGStore) UpdateBuildState(ctx context.Context, buildID uint64, state BuildState) error {
-	_, err := s.conn.Exec(
+	_, err := s.pool.Exec(
 		ctx,
 		`UPDATE builds
 		SET created = $1, started = $2, finished = $3, result = $4
-		WHERE build_id = $5`,
+		WHERE id = $5`,
 		state.Created,
 		state.Started,
 		state.Finished,

@@ -12,7 +12,7 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/store"
 	"github.com/ctbur/ci-server/v2/internal/web"
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
@@ -48,14 +48,14 @@ func run() error {
 	}()
 
 	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, databaseUrl)
+	pool, err := pgxpool.New(ctx, databaseUrl)
 	if err != nil {
-		return fmt.Errorf("failed to connect to database: %v\n", err)
+		return fmt.Errorf("failed to connect to database: %v", err)
 	}
-	defer conn.Close(ctx)
+	defer pool.Close()
 
 	// store.DropAllData(ctx, conn)
-	err = store.ApplyMigrations(slog.Default(), ctx, conn, "./migrations")
+	err = store.ApplyMigrations(slog.Default(), ctx, pool, "./migrations")
 	if err != nil {
 		return err
 	}
@@ -66,7 +66,7 @@ func run() error {
 		return fmt.Errorf("failed to load config: %v\n", err)
 	}
 
-	pgStore := store.NewPGStore(conn)
+	pgStore := store.NewPGStore(pool)
 	store.InitDatabase(ctx, &pgStore, &cfg)
 
 	buildDispatcher := build.Dispatcher{

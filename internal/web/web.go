@@ -21,11 +21,10 @@ import (
 func Handler(cfg config.Config, store store.PGStore) http.Handler {
 	mux := http.NewServeMux()
 
-	uiHandler := http.StripPrefix("/ui", ui.Handler(cfg, store))
-	mux.Handle("/", uiHandler)
-
 	apiHandler := http.StripPrefix("/api", api.Handler(cfg, store))
 	mux.Handle("/api/", apiHandler)
+
+	mux.Handle("/", ui.Handler(cfg, store))
 
 	return wlog.Middleware(mux)
 }

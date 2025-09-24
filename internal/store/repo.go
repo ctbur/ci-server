@@ -31,7 +31,7 @@ type RepoStore interface {
 func (s PGStore) CreateRepo(ctx context.Context, repo RepoMeta) (uint64, error) {
 	var newID uint64
 
-	err := s.conn.QueryRow(
+	err := s.pool.QueryRow(
 		ctx,
 		`INSERT INTO repos (
 			owner,
@@ -49,7 +49,7 @@ func (s PGStore) CreateRepo(ctx context.Context, repo RepoMeta) (uint64, error) 
 func (s PGStore) GetRepo(ctx context.Context, owner, name string) (*Repo, error) {
 	var repo Repo
 
-	err := s.conn.QueryRow(
+	err := s.pool.QueryRow(
 		ctx,
 		`SELECT id, owner, name, build_counter FROM repos
 		WHERE owner = $1 AND name = $2`,
@@ -71,7 +71,7 @@ func (s PGStore) GetRepo(ctx context.Context, owner, name string) (*Repo, error)
 func (s PGStore) IncrementBuildCounter(ctx context.Context, repoID uint64) (uint64, error) {
 	var newBuildCounter uint64
 
-	err := s.conn.QueryRow(
+	err := s.pool.QueryRow(
 		ctx,
 		`UPDATE repos SET build_counter = build_counter + 1 RETURNING build_counter`,
 	).Scan(&newBuildCounter)
