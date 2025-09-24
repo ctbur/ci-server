@@ -8,13 +8,14 @@ import (
 
 	"github.com/ctbur/ci-server/v2/internal/config"
 	"github.com/ctbur/ci-server/v2/internal/store"
+	"github.com/ctbur/ci-server/v2/internal/web/auth"
 	"github.com/ctbur/ci-server/v2/internal/web/wlog"
 )
 
-func Handler(cfg config.Config, s store.PGStore) http.Handler {
+func Handler(cfg config.Config, userAuth auth.UserAuth, s store.PGStore) http.Handler {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("POST /webhook", handleWebhook(s, cfg))
+	mux.Handle("POST /webhook", auth.Middleware(userAuth, handleWebhook(s, cfg)))
 
 	return mux
 }

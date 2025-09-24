@@ -11,6 +11,7 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/config"
 	"github.com/ctbur/ci-server/v2/internal/store"
 	"github.com/ctbur/ci-server/v2/internal/web"
+	"github.com/ctbur/ci-server/v2/internal/web/auth"
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -63,7 +64,16 @@ func run() error {
 
 	var cfg config.Config
 	if _, err := toml.DecodeFile("ci-config.toml", &cfg); err != nil {
-		return fmt.Errorf("failed to load config: %v\n", err)
+		return fmt.Errorf("failed to load config: %v", err)
+	}
+
+	htpasswd, err := os.ReadFile("users.htpasswd")
+	if err != nil {
+		return fmt.Errorf("failed to load users.htpasswd: %v", err)
+	}
+	userAuth, err := auth.FromHtpasswd(string(htpasswd))
+	if err != nil {
+		return fmt.Errorf("failed to decode users.htpasswd: %v", err)
 	}
 
 	pgStore := store.NewPGStore(pool)
@@ -76,7 +86,7 @@ func run() error {
 	}
 	go buildDispatcher.Run(slog.Default(), ctx)
 
-	handler := web.Handler(cfg, pgStore)
+	handler := web.Handler(cfg, userAuth, pgStore)
 	web.RunServer(slog.Default(), handler, 8000)
 	return nil
 }

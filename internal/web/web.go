@@ -14,17 +14,18 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/config"
 	"github.com/ctbur/ci-server/v2/internal/store"
 	"github.com/ctbur/ci-server/v2/internal/web/api"
+	"github.com/ctbur/ci-server/v2/internal/web/auth"
 	"github.com/ctbur/ci-server/v2/internal/web/ui"
 	"github.com/ctbur/ci-server/v2/internal/web/wlog"
 )
 
-func Handler(cfg config.Config, store store.PGStore) http.Handler {
+func Handler(cfg config.Config, userAuth auth.UserAuth, store store.PGStore) http.Handler {
 	mux := http.NewServeMux()
 
-	apiHandler := http.StripPrefix("/api", api.Handler(cfg, store))
+	apiHandler := http.StripPrefix("/api", api.Handler(cfg, userAuth, store))
 	mux.Handle("/api/", apiHandler)
 
-	mux.Handle("/", ui.Handler(cfg, store))
+	mux.Handle("/", auth.Middleware(userAuth, ui.Handler(cfg, store)))
 
 	return wlog.Middleware(mux)
 }
