@@ -4,19 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 
-	"github.com/ctbur/ci-server/v2/internal/build"
 	"github.com/ctbur/ci-server/v2/internal/config"
 	"github.com/ctbur/ci-server/v2/internal/store"
 	"github.com/ctbur/ci-server/v2/internal/web/wlog"
 )
 
-func Handler(cfg config.Config, s store.PGStore, bld build.Builder) http.Handler {
+func Handler(cfg config.Config, s store.PGStore) http.Handler {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("POST /webhook", handleWebhook(s, cfg, bld))
+	mux.HandleFunc("POST /webhook", handleWebhook(s, cfg))
 
 	return mux
 }
@@ -27,10 +25,13 @@ type WebhookPayload struct {
 	CommitSHA string `json:"commit_sha"`
 }
 
+type WebhookResult struct {
+	BuildID uint64 `json:"build_id"`
+}
+
 func handleWebhook(
 	s store.PGStore,
 	cfg config.Config,
-	bld build.Builder,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := wlog.FromContext(r.Context())
@@ -82,26 +83,10 @@ func handleWebhook(
 			return
 		}
 
-		result, err := bld.Build(
-			s,
-			&repo.RepoMeta, &build, buildID,
-			repoCfg.BuildCommand,
-		)
-		if result != nil {
-			log.Info(
-				"Build completed",
-				slog.String("status", string(result.Status)),
-			)
-		} else {
-			log.Error("Build failed", slog.Any("error", err))
+		res := WebhookResult{
+			BuildID: buildID,
 		}
-
-		if err != nil {
-			renderError(w, err, http.StatusInternalServerError)
-			return
-		}
-
-		renderStruct(w, struct{}{}, http.StatusOK)
+		renderStruct(w, res, http.StatusOK)
 	}
 }
 

@@ -5,23 +5,19 @@ import (
 	"time"
 )
 
-type BuildStatus string
+type BuildResult string
 
 const (
-	// Not yet run
-	BuildStatusPending BuildStatus = "pending"
-	// Currently being run
-	BuildStatusRunning BuildStatus = "running"
 	// Build successful
-	BuildStatusSuccess BuildStatus = "success"
+	BuildResultSuccess BuildResult = "success"
 	// Build itself failed
-	BuildStatusFailed BuildStatus = "failure"
+	BuildResultFailed BuildResult = "failure"
 	// User canceled the build
-	BuildstatusCanceled BuildStatus = "canceled"
+	BuildResultCanceled BuildResult = "canceled"
 	// Build timed out
-	BuildStatusTimeout BuildStatus = "timeout"
+	BuildResultTimeout BuildResult = "timeout"
 	// CI encountered an error
-	BuildStatusError BuildStatus = "error"
+	BuildResultError BuildResult = "error"
 )
 
 type BuildMeta struct {
@@ -38,7 +34,7 @@ type BuildState struct {
 	Created  time.Time
 	Started  *time.Time
 	Finished *time.Time
-	Status   BuildStatus
+	Result   *BuildResult
 }
 
 type Build struct {
@@ -60,10 +56,9 @@ func (s PGStore) CreateBuild(ctx context.Context, build BuildMeta) (uint64, erro
 			commit_sha,
 			message,
 			author,
-			created,
-			status
+			created
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9
+			$1, $2, $3, $4, $5, $6, $7, $8
 		) RETURNING id`,
 		build.RepoID,
 		build.Number,
@@ -73,8 +68,22 @@ func (s PGStore) CreateBuild(ctx context.Context, build BuildMeta) (uint64, erro
 		build.Message,
 		build.Author,
 		time.Now(),
-		BuildStatusPending,
 	).Scan(&newID)
 
 	return newID, err
+}
+
+func (s PGStore) UpdateBuildState(ctx context.Context, buildID uint64, state BuildState) error {
+	_, err := s.conn.Exec(
+		ctx,
+		`UPDATE builds
+		SET created = $1, started = $2, finished = $3, result = $4
+		WHERE build_id = $5`,
+		state.Created,
+		state.Started,
+		state.Finished,
+		state.Result,
+		buildID,
+	)
+	return err
 }

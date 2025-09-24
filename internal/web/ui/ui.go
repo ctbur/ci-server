@@ -25,7 +25,7 @@ func handleBuilds(s store.PGStore) http.HandlerFunc {
 		ctx := r.Context()
 		log := wlog.FromContext(ctx)
 
-		builds, err := s.ListBuildsWithRepo(ctx)
+		builds, err := s.ListBuilds(ctx)
 		if err != nil {
 			http.Error(w, "Failed to list builds", http.StatusNotFound)
 			log.Error("Failed to list builds", slog.Any("error", err))

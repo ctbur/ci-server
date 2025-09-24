@@ -54,6 +54,7 @@ func run() error {
 	}
 	defer conn.Close(ctx)
 
+	// store.DropAllData(ctx, conn)
 	err = store.ApplyMigrations(slog.Default(), ctx, conn, "./migrations")
 	if err != nil {
 		return err
@@ -68,9 +69,14 @@ func run() error {
 	pgStore := store.NewPGStore(conn)
 	store.InitDatabase(ctx, &pgStore, &cfg)
 
-	bld := build.NewBuilder(cfg.BuildDir)
+	buildDispatcher := build.Dispatcher{
+		Builds: pgStore,
+		Logs:   pgStore,
+		Cfg:    cfg,
+	}
+	go buildDispatcher.Run(slog.Default(), ctx)
 
-	handler := web.Handler(cfg, pgStore, bld)
+	handler := web.Handler(cfg, pgStore)
 	web.RunServer(slog.Default(), handler, 8000)
 	return nil
 }

@@ -1,9 +1,9 @@
-CREATE TYPE build_status AS ENUM (
-    'pending',
-    'running',
+CREATE TYPE build_result AS ENUM (
     'success',
     'failure',
-    'canceled'
+    'canceled',
+    'timeout',
+    'error'
 );
 
 CREATE TABLE builds (
@@ -20,7 +20,7 @@ CREATE TABLE builds (
     created TIMESTAMP NOT NULL,
     started TIMESTAMP,
     finished TIMESTAMP,
-    status build_status NOT NULL DEFAULT 'pending',
+    result build_result,
 
     CONSTRAINT fk_repo
         FOREIGN KEY (repo_id)

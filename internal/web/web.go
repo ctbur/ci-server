@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ctbur/ci-server/v2/internal/build"
 	"github.com/ctbur/ci-server/v2/internal/config"
 	"github.com/ctbur/ci-server/v2/internal/store"
 	"github.com/ctbur/ci-server/v2/internal/web/api"
@@ -19,14 +18,14 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/web/wlog"
 )
 
-func Handler(cfg config.Config, store store.PGStore, bld build.Builder) http.Handler {
+func Handler(cfg config.Config, store store.PGStore) http.Handler {
 	mux := http.NewServeMux()
 
-	apiHandler := http.StripPrefix("/api", api.Handler(cfg, store, bld))
-	mux.Handle("/api/", apiHandler)
-
 	uiHandler := http.StripPrefix("/ui", ui.Handler(cfg, store))
-	mux.Handle("/ui/", uiHandler)
+	mux.Handle("/", uiHandler)
+
+	apiHandler := http.StripPrefix("/api", api.Handler(cfg, store))
+	mux.Handle("/api/", apiHandler)
 
 	return wlog.Middleware(mux)
 }
