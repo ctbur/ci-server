@@ -11,19 +11,32 @@
         />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="stylesheet" href="/static/css/reset.css" />
-        <link rel="stylesheet" href="/static/css/main.css" />
+        <link rel="stylesheet" href="/static/css/theme.css" />
+        <link rel="stylesheet" href="/static/css/layout.css" />
+        <link rel="stylesheet" href="/static/css/typography.css" />
+        <link rel="stylesheet" href="/static/css/cards.css" />
     </head>
 
-    <body>
-        <header class="container"></header>
+    <body class="no-sidebar">
+        <header class="container">
+            <h1>Builds</h1>
+        </header>
 
-        <aside class="container">
-        {{- range $b := .Builds }}
-            <p>{{ $b.Owner }}/{{ $b.Name }} {{ $b.ID }}</p>
-        {{- end }}
-        </aside>
-
-        <main class="container"></main>
+        <main class="container">
+            <section id="builds">
+                <ul class="card-list">
+                    {{- range $b := .Builds }}
+                    <a href="/builds/{{ $b.ID }}" class="card-link">
+                    <li class="card">
+                        <h2>Build title</h2>
+                        <p>{{ $b.Owner }}/{{ $b.Name }} {{ $b.ID }}</p>
+                        <!-- TODO: status repo branch message commit author created started finished -->
+                    </li>
+                    </a>
+                    {{- end }}
+                </ul>
+            </section>
+        </main>
     </body>
 </html>
 {{ end }}
