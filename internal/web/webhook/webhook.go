@@ -1,4 +1,4 @@
-package api
+package webhook
 
 import (
 	"encoding/json"
@@ -15,22 +15,26 @@ import (
 func Handler(cfg config.Config, userAuth auth.UserAuth, s store.PGStore) http.Handler {
 	mux := http.NewServeMux()
 
-	mux.Handle("POST /webhook", auth.Middleware(userAuth, handleWebhook(s, cfg)))
+	mux.Handle("POST /manual", auth.Middleware(userAuth, handleManual(s, cfg)))
 
 	return mux
 }
 
-type WebhookPayload struct {
+type ManualPayload struct {
 	Owner     string `json:"owner"`
 	Name      string `json:"name"`
+	Link      string `json:"link"`
+	Ref       string `json:"ref"`
 	CommitSHA string `json:"commit_sha"`
+	Message   string `json:"message"`
+	Author    string `json:"author"`
 }
 
-type WebhookResult struct {
+type ManualResult struct {
 	BuildID uint64 `json:"build_id"`
 }
 
-func handleWebhook(
+func handleManual(
 	s store.PGStore,
 	cfg config.Config,
 ) http.HandlerFunc {
@@ -38,7 +42,7 @@ func handleWebhook(
 		log := wlog.FromContext(r.Context())
 		log.Info("HandleWebhook called")
 
-		payload, err := decodeJSON[WebhookPayload](r.Body)
+		payload, err := decodeJSON[ManualPayload](r.Body)
 		if err != nil {
 			renderError(w, err, http.StatusBadRequest)
 			return
@@ -72,11 +76,11 @@ func handleWebhook(
 		build := store.BuildMeta{
 			RepoID:    repo.ID,
 			Number:    buildNumber,
-			Link:      "some link",
-			Ref:       "refs/heads/branch",
+			Link:      payload.Link,
+			Ref:       payload.Ref,
 			CommitSHA: payload.CommitSHA,
-			Message:   "Build message",
-			Author:    "some author",
+			Message:   payload.Message,
+			Author:    payload.Author,
 		}
 		buildID, err := s.CreateBuild(r.Context(), build)
 		if err != nil {
@@ -84,7 +88,7 @@ func handleWebhook(
 			return
 		}
 
-		res := WebhookResult{
+		res := ManualResult{
 			BuildID: buildID,
 		}
 		renderStruct(w, res, http.StatusOK)

@@ -14,9 +14,9 @@ import (
 
 	"github.com/ctbur/ci-server/v2/internal/config"
 	"github.com/ctbur/ci-server/v2/internal/store"
-	"github.com/ctbur/ci-server/v2/internal/web/api"
 	"github.com/ctbur/ci-server/v2/internal/web/auth"
 	"github.com/ctbur/ci-server/v2/internal/web/ui"
+	"github.com/ctbur/ci-server/v2/internal/web/webhook"
 	"github.com/ctbur/ci-server/v2/internal/web/wlog"
 )
 
@@ -26,8 +26,8 @@ func Handler(cfg config.Config, userAuth auth.UserAuth, store store.PGStore, tmp
 	staticFileServer := http.FileServer(http.Dir(staticFileDir))
 	mux.Handle("/static/", http.StripPrefix("/static/", staticFileServer))
 
-	apiHandler := http.StripPrefix("/api", api.Handler(cfg, userAuth, store))
-	mux.Handle("/api/", apiHandler)
+	webhookHandler := http.StripPrefix("/webhook", webhook.Handler(cfg, userAuth, store))
+	mux.Handle("/webhook/", webhookHandler)
 
 	mux.Handle("/", auth.Middleware(userAuth, ui.Handler(cfg, store, tmpl)))
 
