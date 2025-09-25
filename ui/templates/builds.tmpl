@@ -28,8 +28,8 @@
                     {{- range $b := .Builds }}
                     <a href="/builds/{{ $b.ID }}" class="card-link">
                     <li class="card">
-                        <h2>Build title</h2>
-                        <p>{{ $b.Owner }}/{{ $b.Name }} {{ $b.ID }}</p>
+                        <h2> {{ $b.Message }} </h2>
+                        <p>{{ $b.Owner }}/{{ $b.Name }}#{{ $b.Number }} - {{ $b.Author }}</p>
                         <!-- TODO: status repo branch message commit author created started finished -->
                     </li>
                     </a>
