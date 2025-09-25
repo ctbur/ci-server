@@ -13,6 +13,7 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/store"
 	"github.com/ctbur/ci-server/v2/internal/web"
 	"github.com/ctbur/ci-server/v2/internal/web/auth"
+	"github.com/ctbur/ci-server/v2/internal/web/ui"
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -77,7 +78,9 @@ func run() error {
 		return fmt.Errorf("failed to decode users.htpasswd: %v", err)
 	}
 
-	tmpl, err := template.ParseGlob("ui/templates/*.tmpl")
+	tmpl, err := template.New("main").Funcs(template.FuncMap{
+		"formatDuration": ui.FormatDuration,
+	}).ParseGlob("ui/templates/*.tmpl")
 	if err != nil {
 		return fmt.Errorf("failed to load templates: %v", err)
 	}

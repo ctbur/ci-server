@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/config"
 	"github.com/ctbur/ci-server/v2/internal/store"
@@ -22,8 +24,49 @@ func Handler(cfg config.Config, s store.PGStore, tmpl *template.Template) http.H
 	return mux
 }
 
-type BuildsPageParams struct {
-	Builds []store.BuildWithRepoMeta
+func FormatDuration(d time.Duration) string {
+	if d < 0 {
+		return "N/A"
+	}
+
+	s := ""
+	days := int(d.Hours()) / 24
+	if days > 0 {
+		s += fmt.Sprintf("%dd ", days)
+		d -= time.Duration(days) * 24 * time.Hour
+	}
+
+	hours := int(d.Hours())
+	if hours > 0 {
+		s += fmt.Sprintf("%dh ", hours)
+		d -= time.Duration(hours) * time.Hour
+	}
+
+	minutes := int(d.Minutes())
+	if minutes > 0 {
+		s += fmt.Sprintf("%dm ", minutes)
+		d -= time.Duration(minutes) * time.Minute
+	}
+
+	seconds := int(d.Seconds())
+	s += fmt.Sprintf("%ds", seconds)
+
+	return strings.TrimSpace(s)
+}
+
+type BuildsPage struct {
+	BuildCards []BuildCard
+}
+
+type BuildCard struct {
+	ID        uint64
+	Status    string
+	Message   string
+	Author    string
+	Ref       string
+	CommitSHA string
+	Duration  time.Duration
+	Created   time.Time
 }
 
 func handleBuilds(s store.PGStore, tmpl *template.Template) http.HandlerFunc {
@@ -38,8 +81,36 @@ func handleBuilds(s store.PGStore, tmpl *template.Template) http.HandlerFunc {
 			return
 		}
 
-		params := &BuildsPageParams{
-			Builds: builds,
+		buildCards := make([]BuildCard, len(builds))
+		for i, b := range builds {
+			status := "pending"
+			if b.Result != nil {
+				status = string(*b.Result)
+			} else if b.Started != nil {
+				status = "running"
+			}
+
+			var duration time.Duration
+			if b.Started != nil && b.Finished != nil {
+				duration = b.Finished.Sub(*b.Started)
+			} else if b.Started != nil {
+				duration = time.Since(*b.Started)
+			}
+
+			card := BuildCard{
+				ID:        b.ID,
+				Status:    status,
+				Message:   b.Message,
+				Author:    b.Author,
+				Ref:       b.Ref,
+				CommitSHA: b.CommitSHA[:7],
+				Duration:  duration,
+				Created:   b.Created,
+			}
+			buildCards[i] = card
+		}
+		params := &BuildsPage{
+			BuildCards: buildCards,
 		}
 
 		var b bytes.Buffer
