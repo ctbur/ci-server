@@ -1,0 +1,145 @@
+/* BUILD CARD */
+
+.build-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.build-card-link,
+.build-card-link:visited {
+    display: block;
+
+    text-decoration: none;
+    color: inherit;
+}
+
+.build-card {
+    padding: 1.5rem;
+    box-shadow: var(--box-shadow);
+    background-color: var(--card-background-color);
+
+    display: grid;
+    grid-template-columns: 12rem 1fr 12rem 10rem;
+    grid-template-rows: 1fr 1fr;
+    grid-template-areas:
+        "status message ref        duration"
+        "author message commit_sha created ";
+}
+
+.build-details-item {
+    padding: 0.5rem 1rem;
+
+    white-space: nowrap;
+    text-overflow: clip;
+    overflow: hidden;
+}
+
+.status {
+    grid-area: status;
+}
+
+.ref {
+    grid-area: ref;
+}
+
+.message {
+    grid-area: message;
+
+    display: flex;
+    align-items: center;
+
+    white-space: normal;
+    text-overflow: ellipsis;
+}
+
+.author {
+    grid-area: author;
+}
+
+.commit-sha {
+    grid-area: commit_sha;
+}
+
+.duration {
+    grid-area: duration;
+
+    display: flex;
+    justify-content: flex-end;
+}
+
+.created {
+    grid-area: created;
+
+    display: flex;
+    justify-content: flex-end;
+}
+
+/* BUILD TITLE */
+
+.build-title-container {
+    display: flex;
+    align-items: center;
+
+    font-size: 1.5rem;
+
+    gap: 1rem;
+}
+
+.build-title-name {
+    font-weight: bold;
+}
+
+.build-title-message {
+    font-weight: normal;
+
+    text-overflow: ellipsis;
+    overflow: hidden;
+
+    color: var(--text-secondary-color);
+}
+
+.build-title-status {
+    font-weight: bold;
+
+    margin-left: auto;
+}
+
+/* LOGS */
+
+.log-container {
+    padding: 1rem;
+    box-shadow: var(--box-shadow);
+    background-color: var(--logs-background-color);
+    color: var(--logs-text-color);
+
+    overflow: hidden;
+    font-family: "Fira Code", "JetBrains Mono", "Consolas", monospace;
+
+    display: grid;
+    column-gap: 0.5rem;
+    grid-template-columns: 3rem 1fr auto;
+
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.log-line-number {
+    display: flex;
+    justify-content: flex-end;
+
+    user-select: none;
+}
+
+.log-text {
+    font-weight: bold;
+
+    word-wrap: break-word;
+}
+
+.log-time {
+    display: flex;
+    justify-content: flex-end;
+
+    user-select: none;
+}

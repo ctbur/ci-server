@@ -78,9 +78,8 @@ func run() error {
 		return fmt.Errorf("failed to decode users.htpasswd: %v", err)
 	}
 
-	tmpl, err := template.New("main").Funcs(template.FuncMap{
-		"formatDuration": ui.FormatDuration,
-	}).ParseGlob("ui/templates/*.tmpl")
+	tmpl, err := template.New("main").Funcs(ui.TemplateFuncMap).
+		ParseGlob("ui/templates/*.tmpl")
 	if err != nil {
 		return fmt.Errorf("failed to load templates: %v", err)
 	}

@@ -1,20 +1,9 @@
-{{ define "page_builds" }}
+{{ define "page_build_list" }}
 <!doctype html>
 <html lang="en">
     <head>
-        <meta charset="utf-8" />
+        {{ template "comp_head" }}
         <title>CI</title>
-        <link
-            rel="icon"
-            type="image/x-icon"
-            href="/static/images/favicon.ico"
-        />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="stylesheet" href="/static/css/reset.css" />
-        <link rel="stylesheet" href="/static/css/theme.css" />
-        <link rel="stylesheet" href="/static/css/layout.css" />
-        <link rel="stylesheet" href="/static/css/typography.css" />
-        <link rel="stylesheet" href="/static/css/cards.css" />
     </head>
 
     <body class="no-sidebar">
@@ -24,17 +13,17 @@
 
         <main class="container">
             <section id="builds">
-                <ul class="card-list">
+                <ul class="build-list">
                     {{- range .BuildCards }}
-                    <a href="/builds/{{ .ID }}" class="card-link">
-                        <li class="card build-details">
+                    <a href="/builds/{{ .ID }}" class="build-card-link">
+                        <li class="build-card">
                             <div class="build-details-item status">{{ .Status }}</div>
                             <div class="build-details-item author">{{ .Author }}</div>
                             <div class="build-details-item message">{{ .Message }}</div>
                             <div class="build-details-item ref">{{ .Ref }}</div>
                             <div class="build-details-item duration">{{ formatDuration .Duration }}</div>
                             <div class="build-details-item commit-sha">{{ .CommitSHA }}</div>
-                            <div class="build-details-item created">{{ .Created.Format "Jan 2, 15:04" }}</div>
+                            <div class="build-details-item created">{{ formatTime .Started "Jan 2, 15:04" }}</div>
                         </li>
                     </a>
                     {{- end }}

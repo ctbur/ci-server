@@ -2,12 +2,10 @@ package ui
 
 import (
 	"bytes"
-	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/config"
@@ -18,43 +16,13 @@ import (
 func Handler(cfg config.Config, s store.PGStore, tmpl *template.Template) http.Handler {
 	mux := http.NewServeMux()
 
-	mux.Handle("GET /{$}", handleBuilds(s, tmpl))
-	mux.Handle("GET /builds/{build_id}", handleBuildDetails(s))
+	mux.Handle("GET /{$}", handleBuildList(s, tmpl))
+	mux.Handle("GET /builds/{build_id}", handleBuildDetails(s, tmpl))
 
 	return mux
 }
 
-func FormatDuration(d time.Duration) string {
-	if d < 0 {
-		return "N/A"
-	}
-
-	s := ""
-	days := int(d.Hours()) / 24
-	if days > 0 {
-		s += fmt.Sprintf("%dd ", days)
-		d -= time.Duration(days) * 24 * time.Hour
-	}
-
-	hours := int(d.Hours())
-	if hours > 0 {
-		s += fmt.Sprintf("%dh ", hours)
-		d -= time.Duration(hours) * time.Hour
-	}
-
-	minutes := int(d.Minutes())
-	if minutes > 0 {
-		s += fmt.Sprintf("%dm ", minutes)
-		d -= time.Duration(minutes) * time.Minute
-	}
-
-	seconds := int(d.Seconds())
-	s += fmt.Sprintf("%ds", seconds)
-
-	return strings.TrimSpace(s)
-}
-
-type BuildsPage struct {
+type BuildListPage struct {
 	BuildCards []BuildCard
 }
 
@@ -65,11 +33,11 @@ type BuildCard struct {
 	Author    string
 	Ref       string
 	CommitSHA string
-	Duration  time.Duration
-	Created   time.Time
+	Duration  *time.Duration
+	Started   *time.Time
 }
 
-func handleBuilds(s store.PGStore, tmpl *template.Template) http.HandlerFunc {
+func handleBuildList(s store.PGStore, tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		log := wlog.FromContext(ctx)
@@ -83,38 +51,25 @@ func handleBuilds(s store.PGStore, tmpl *template.Template) http.HandlerFunc {
 
 		buildCards := make([]BuildCard, len(builds))
 		for i, b := range builds {
-			status := "pending"
-			if b.Result != nil {
-				status = string(*b.Result)
-			} else if b.Started != nil {
-				status = "running"
-			}
-
-			var duration time.Duration
-			if b.Started != nil && b.Finished != nil {
-				duration = b.Finished.Sub(*b.Started)
-			} else if b.Started != nil {
-				duration = time.Since(*b.Started)
-			}
 
 			card := BuildCard{
 				ID:        b.ID,
-				Status:    status,
+				Status:    buildStatus(b.BuildState),
 				Message:   b.Message,
 				Author:    b.Author,
 				Ref:       b.Ref,
 				CommitSHA: b.CommitSHA[:7],
-				Duration:  duration,
-				Created:   b.Created,
+				Duration:  durationSinceBuildStart(b.BuildState),
+				Started:   b.Started,
 			}
 			buildCards[i] = card
 		}
-		params := &BuildsPage{
+		params := &BuildListPage{
 			BuildCards: buildCards,
 		}
 
 		var b bytes.Buffer
-		err = tmpl.ExecuteTemplate(&b, "page_builds", params)
+		err = tmpl.ExecuteTemplate(&b, "page_build_list", params)
 		if err != nil {
 			http.Error(w, "Failed to render template", http.StatusInternalServerError)
 			log.Error("Failed to render template", slog.Any("error", err))
@@ -126,7 +81,23 @@ func handleBuilds(s store.PGStore, tmpl *template.Template) http.HandlerFunc {
 	}
 }
 
-func handleBuildDetails(s store.PGStore) http.HandlerFunc {
+type LogLine struct {
+	Text           string
+	TimeSinceStart time.Duration
+}
+
+type BuildDetailsPage struct {
+	RepoOwner string
+	RepoName  string
+	Status    string
+	Message   string
+	Number    uint64
+	Started   *time.Time
+	Duration  *time.Duration
+	LogLines  []LogLine
+}
+
+func handleBuildDetails(s store.PGStore, tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
@@ -155,21 +126,57 @@ func handleBuildDetails(s store.PGStore) http.HandlerFunc {
 			return
 		}
 
-		fmt.Fprintf(w, "Created: %s\n", build.Created.Format("2006-01-02 15:04:05"))
-		if build.Started != nil {
-			fmt.Fprintf(w, "Started: %s\n", build.Started.Format("2006-01-02 15:04:05"))
+		logLines := make([]LogLine, len(logs))
+		for i, log := range logs {
+			logLines[i] = LogLine{
+				Text:           log.Text,
+				TimeSinceStart: log.Timestamp.Sub(logs[0].Timestamp),
+			}
 		}
-		if build.Finished != nil {
-			fmt.Fprintf(w, "Started: %s\n", build.Finished.Format("2006-01-02 15:04:05"))
-		}
-		if build.Result != nil {
-			fmt.Fprintf(w, "Result: %s", *build.Result)
-		}
-		fmt.Fprint(w, "\n")
 
-		for i := range logs {
-			w.Write([]byte(logs[i].Text))
-			w.Write([]byte("\n"))
+		params := &BuildDetailsPage{
+			RepoOwner: build.Owner,
+			RepoName:  build.Name,
+			Status:    buildStatus(build.BuildState),
+			Message:   build.Message,
+			Number:    build.Number,
+			Started:   build.Started,
+			Duration:  durationSinceBuildStart(build.BuildState),
+			LogLines:  logLines,
 		}
+
+		var b bytes.Buffer
+		err = tmpl.ExecuteTemplate(&b, "page_build_details", params)
+		if err != nil {
+			http.Error(w, "Failed to render template", http.StatusInternalServerError)
+			slog.ErrorContext(ctx, "Failed to render template", slog.Any("error", err))
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		b.WriteTo(w)
 	}
+}
+
+func durationSinceBuildStart(b store.BuildState) *time.Duration {
+	if b.Started == nil {
+		return nil
+	}
+
+	var duration time.Duration
+	if b.Finished != nil {
+		duration = b.Finished.Sub(*b.Started)
+	} else {
+		duration = time.Since(*b.Started)
+	}
+	return &duration
+}
+
+func buildStatus(b store.BuildState) string {
+	if b.Result != nil {
+		return string(*b.Result)
+	} else if b.Started != nil {
+		return "running"
+	}
+	return "pending"
 }

@@ -148,49 +148,6 @@ func (s PGStore) CreateBuild(ctx context.Context, build BuildMeta) (uint64, erro
 	return newID, err
 }
 
-func (s PGStore) GetBuild(ctx context.Context, buildID uint64) (*Build, error) {
-	var build Build
-
-	err := s.pool.QueryRow(
-		ctx,
-		`SELECT
-			id,
-			repo_id,
-			number,
-			link,
-			ref,
-			commit_sha,
-			message,
-			author,
-			created,
-			started,
-			finished,
-			result
-		FROM builds
-		WHERE id = $1`,
-		buildID,
-	).Scan(
-		&build.ID,
-		&build.RepoID,
-		&build.Number,
-		&build.Link,
-		&build.Ref,
-		&build.CommitSHA,
-		&build.Message,
-		&build.Author,
-		&build.Created,
-		&build.Started,
-		&build.Finished,
-		&build.Result,
-	)
-
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-
-	return &build, err
-}
-
 func (s PGStore) UpdateBuildState(ctx context.Context, buildID uint64, state BuildState) error {
 	_, err := s.pool.Exec(
 		ctx,
@@ -209,6 +166,54 @@ func (s PGStore) UpdateBuildState(ctx context.Context, buildID uint64, state Bui
 type BuildWithRepoMeta struct {
 	Build
 	RepoMeta
+}
+
+func (s PGStore) GetBuild(ctx context.Context, buildID uint64) (*BuildWithRepoMeta, error) {
+	var b BuildWithRepoMeta
+
+	err := s.pool.QueryRow(
+		ctx,
+		`SELECT
+			b.id,
+			b.repo_id,
+			b.number,
+			b.link,
+			b.ref,
+			b.commit_sha,
+			b.message,
+			b.author,
+			b.created,
+			b.started,
+			b.finished,
+			b.result,
+			r.owner,
+			r.name
+		FROM builds AS b
+		INNER JOIN repos AS r ON b.repo_id = r.id
+		WHERE b.id = $1`,
+		buildID,
+	).Scan(
+		&b.Build.ID,
+		&b.Build.RepoID,
+		&b.Build.Number,
+		&b.Build.Link,
+		&b.Build.Ref,
+		&b.Build.CommitSHA,
+		&b.Build.Message,
+		&b.Build.Author,
+		&b.Build.Created,
+		&b.Build.Started,
+		&b.Build.Finished,
+		&b.Build.Result,
+		&b.RepoMeta.Owner,
+		&b.RepoMeta.Name,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+
+	return &b, err
 }
 
 func (s PGStore) ListBuilds(ctx context.Context) ([]BuildWithRepoMeta, error) {
