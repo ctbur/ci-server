@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"html/template"
 	"log/slog"
 	"os"
 
@@ -76,6 +77,11 @@ func run() error {
 		return fmt.Errorf("failed to decode users.htpasswd: %v", err)
 	}
 
+	tmpl, err := template.ParseGlob("ui/templates/*.tmpl")
+	if err != nil {
+		return fmt.Errorf("failed to load templates: %v", err)
+	}
+
 	pgStore := store.NewPGStore(pool)
 	store.InitDatabase(ctx, &pgStore, &cfg)
 
@@ -86,7 +92,7 @@ func run() error {
 	}
 	go buildDispatcher.Run(slog.Default(), ctx)
 
-	handler := web.Handler(cfg, userAuth, pgStore)
+	handler := web.Handler(cfg, userAuth, pgStore, tmpl, "ui/static/")
 	web.RunServer(slog.Default(), handler, 8000)
 	return nil
 }

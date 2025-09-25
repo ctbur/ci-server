@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html/template"
 	"log/slog"
 	"net/http"
 	"os"
@@ -19,13 +20,16 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/web/wlog"
 )
 
-func Handler(cfg config.Config, userAuth auth.UserAuth, store store.PGStore) http.Handler {
+func Handler(cfg config.Config, userAuth auth.UserAuth, store store.PGStore, tmpl *template.Template, staticFileDir string) http.Handler {
 	mux := http.NewServeMux()
+
+	staticFileServer := http.FileServer(http.Dir(staticFileDir))
+	mux.Handle("/static/", http.StripPrefix("/static/", staticFileServer))
 
 	apiHandler := http.StripPrefix("/api", api.Handler(cfg, userAuth, store))
 	mux.Handle("/api/", apiHandler)
 
-	mux.Handle("/", auth.Middleware(userAuth, ui.Handler(cfg, store)))
+	mux.Handle("/", auth.Middleware(userAuth, ui.Handler(cfg, store, tmpl)))
 
 	return wlog.Middleware(mux)
 }

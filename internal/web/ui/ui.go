@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"bytes"
 	"fmt"
+	"html/template"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -11,46 +13,45 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/web/wlog"
 )
 
-func Handler(cfg config.Config, s store.PGStore) http.Handler {
+func Handler(cfg config.Config, s store.PGStore, tmpl *template.Template) http.Handler {
 	mux := http.NewServeMux()
 
-	mux.Handle("GET /{$}", handleBuilds(s))
+	mux.Handle("GET /{$}", handleBuilds(s, tmpl))
 	mux.Handle("GET /builds/{build_id}", handleBuildDetails(s))
 
 	return mux
 }
 
-func handleBuilds(s store.PGStore) http.HandlerFunc {
+type BuildsPageParams struct {
+	Builds []store.BuildWithRepoMeta
+}
+
+func handleBuilds(s store.PGStore, tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		log := wlog.FromContext(ctx)
 
 		builds, err := s.ListBuilds(ctx)
 		if err != nil {
-			http.Error(w, "Failed to list builds", http.StatusNotFound)
+			http.Error(w, "Failed to list builds", http.StatusInternalServerError)
 			log.Error("Failed to list builds", slog.Any("error", err))
 			return
 		}
 
-		for i := range builds {
-			b := &builds[i]
-
-			finishedStr := "TBD"
-			if b.Finished != nil {
-				finishedStr = b.Finished.Format("2006-01-02T15:04:05.000Z")
-			}
-
-			line := fmt.Sprintf(
-				"%s/%s Nr. %d: %s - %s",
-				b.RepoMeta.Owner,
-				b.RepoMeta.Name,
-				b.Number,
-				b.Created.Format("2006-01-02T15:04:05.000Z"),
-				finishedStr,
-			)
-			w.Write([]byte(line))
-			w.Write([]byte("\n"))
+		params := &BuildsPageParams{
+			Builds: builds,
 		}
+
+		var b bytes.Buffer
+		err = tmpl.ExecuteTemplate(&b, "page_builds", params)
+		if err != nil {
+			http.Error(w, "Failed to render template", http.StatusInternalServerError)
+			log.Error("Failed to render template", slog.Any("error", err))
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		b.WriteTo(w)
 	}
 }
 
