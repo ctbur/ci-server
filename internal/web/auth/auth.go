@@ -49,10 +49,10 @@ func (a *UserAuth) VerifyCredentials(user, password string) error {
 	return nil
 }
 
-func Middleware(userAuth UserAuth, next http.Handler) http.Handler {
+func (a *UserAuth) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, password, ok := r.BasicAuth()
-		if ok && userAuth.VerifyCredentials(user, password) == nil {
+		if ok && a.VerifyCredentials(user, password) == nil {
 			next.ServeHTTP(w, r)
 			return
 		}

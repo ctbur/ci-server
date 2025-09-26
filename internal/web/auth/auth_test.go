@@ -66,7 +66,7 @@ func dummyHandler(w http.ResponseWriter, r *http.Request) {
 
 func TestMiddlewareUnauthorized(t *testing.T) {
 	userAuth := GetTestAuth(t)
-	handler := Middleware(userAuth, http.HandlerFunc(dummyHandler))
+	handler := userAuth.Middleware(http.HandlerFunc(dummyHandler))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.SetBasicAuth("test1", "invalid_password")
@@ -87,7 +87,7 @@ func TestMiddlewareUnauthorized(t *testing.T) {
 
 func TestMiddlewareNoAuth(t *testing.T) {
 	userAuth := GetTestAuth(t)
-	handler := Middleware(userAuth, http.HandlerFunc(dummyHandler))
+	handler := userAuth.Middleware(http.HandlerFunc(dummyHandler))
 
 	// No basic auth header
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -102,7 +102,7 @@ func TestMiddlewareNoAuth(t *testing.T) {
 
 func TestMiddlewareSuccess(t *testing.T) {
 	userAuth := GetTestAuth(t)
-	handler := Middleware(userAuth, http.HandlerFunc(dummyHandler))
+	handler := userAuth.Middleware(http.HandlerFunc(dummyHandler))
 
 	// Valid credentials
 	req := httptest.NewRequest(http.MethodGet, "/", nil)

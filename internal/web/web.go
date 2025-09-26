@@ -20,7 +20,7 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/web/wlog"
 )
 
-func Handler(cfg config.Config, userAuth auth.UserAuth, store store.PGStore, tmpl *template.Template, staticFileDir string) http.Handler {
+func Handler(cfg *config.Config, userAuth auth.UserAuth, store store.PGStore, tmpl *template.Template, staticFileDir string) http.Handler {
 	mux := http.NewServeMux()
 
 	staticFileServer := http.FileServer(http.Dir(staticFileDir))
@@ -29,7 +29,7 @@ func Handler(cfg config.Config, userAuth auth.UserAuth, store store.PGStore, tmp
 	webhookHandler := http.StripPrefix("/webhook", webhook.Handler(cfg, userAuth, store))
 	mux.Handle("/webhook/", webhookHandler)
 
-	mux.Handle("/", auth.Middleware(userAuth, ui.Handler(cfg, store, tmpl)))
+	mux.Handle("/", userAuth.Middleware(ui.Handler(cfg, store, tmpl)))
 
 	return wlog.Middleware(mux)
 }

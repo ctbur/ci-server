@@ -3,6 +3,7 @@
 # Check if a URL was provided as an argument
 if [ -z "$1" ]; then
   echo "Usage: $0 <github_commit_url>"
+  echo "Ensure CI_USER and CI_PASSWORD environment variables are set."
   exit 1
 fi
 

@@ -13,7 +13,7 @@ import (
 type Dispatcher struct {
 	Builds   BuildRepository
 	Logs     LogConsumer
-	Cfg      config.Config
+	Cfg      *config.Config
 	builders []Builder
 }
 

@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/BurntSushi/toml"
 	"github.com/ctbur/ci-server/v2/internal/build"
 	"github.com/ctbur/ci-server/v2/internal/config"
 	"github.com/ctbur/ci-server/v2/internal/store"
@@ -64,8 +63,8 @@ func run() error {
 	}
 	slog.Info("Schema 'public' recreated successfully")
 
-	var cfg config.Config
-	if _, err := toml.DecodeFile("ci-config.toml", &cfg); err != nil {
+	cfg, err := config.Load(os.Getenv("CI_SERVER_SECRET_KEY"), "ci-config.toml")
+	if err != nil {
 		return fmt.Errorf("failed to load config: %v", err)
 	}
 
@@ -85,7 +84,7 @@ func run() error {
 	}
 
 	pgStore := store.NewPGStore(pool)
-	store.InitDatabase(ctx, &pgStore, &cfg)
+	store.InitDatabase(ctx, &pgStore, cfg)
 
 	buildDispatcher := build.Dispatcher{
 		Builds: pgStore,

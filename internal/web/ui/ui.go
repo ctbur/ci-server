@@ -13,7 +13,7 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/web/wlog"
 )
 
-func Handler(cfg config.Config, s store.PGStore, tmpl *template.Template) http.Handler {
+func Handler(cfg *config.Config, s store.PGStore, tmpl *template.Template) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.Handle("GET /{$}", handleBuildList(s, tmpl))
