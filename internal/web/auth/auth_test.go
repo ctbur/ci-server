@@ -13,110 +13,130 @@ test1:$2y$05$vyEpG2uWhCB36knMvzIDc.k43J8Hyx84gMwlDKpcWsGH/Qi9QjrXe
 test2:$2y$05$LstBCg/Z9DRNeFae8wq/duuWAzk5JFbB8kTIptHITu.j0iGXmCqZu
 `
 
-func GetTestAuth(t *testing.T) UserAuth {
-	a, err := FromHtpasswd(htpasswd)
+func TestVerifyCredentials(t *testing.T) {
+	userAuth, err := FromHtpasswd(htpasswd)
 	if err != nil {
 		t.Error(err)
 	}
 
-	return a
-}
+	testCases := []struct {
+		desc      string
+		username  string
+		password  string
+		wantError error
+	}{
+		{
+			desc:      "user does not exist",
+			username:  "not_a_user",
+			password:  "1234",
+			wantError: ErrUserDoesNotExist,
+		},
+		{
+			desc:      "password mismatch for test1",
+			username:  "test1",
+			password:  "4321",
+			wantError: ErrPasswordMismatch,
+		},
+		{
+			desc:      "password mismatch for test2",
+			username:  "test2",
+			password:  "asdf",
+			wantError: ErrPasswordMismatch,
+		},
+		{
+			desc:      "password match for test1",
+			username:  "test1",
+			password:  "1234",
+			wantError: nil,
+		},
+		{
+			desc:      "password match for test2",
+			username:  "test2",
+			password:  "4321",
+			wantError: nil,
+		},
+	}
 
-func TestUserDoesNotExist(t *testing.T) {
-	a := GetTestAuth(t)
-
-	err := a.VerifyCredentials("not_a_user", "1234")
-	if !errors.Is(err, ErrUserDoesNotExist) {
-		t.Fail()
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			gotError := userAuth.VerifyCredentials(tC.username, tC.password)
+			if !errors.Is(gotError, tC.wantError) {
+				t.Errorf("got %v, want %v", gotError, tC.wantError)
+			}
+		})
 	}
 }
 
-func TestPasswordMismatch(t *testing.T) {
-	a := GetTestAuth(t)
-
-	err := a.VerifyCredentials("test1", "4321")
-	if !errors.Is(err, ErrPasswordMismatch) {
-		t.Fail()
-	}
-
-	err = a.VerifyCredentials("test2", "asdf")
-	if !errors.Is(err, ErrPasswordMismatch) {
-		t.Fail()
-	}
+type BasicAuth struct {
+	User, Password string
 }
 
-func TestPasswordMatch(t *testing.T) {
-	a := GetTestAuth(t)
-
-	err := a.VerifyCredentials("test1", "1234")
-	if err != nil {
-		t.Fail()
+func TestMiddleware(t *testing.T) {
+	testCases := []struct {
+		desc            string
+		auth            *BasicAuth
+		wantHTTPCode    int
+		wwwAuthenticate string
+	}{
+		{
+			desc:            "no auth header",
+			auth:            nil,
+			wantHTTPCode:    http.StatusUnauthorized,
+			wwwAuthenticate: `Basic realm="restricted", charset="UTF-8"`,
+		},
+		{
+			desc: "invalid credentials",
+			auth: &BasicAuth{
+				User:     "test1",
+				Password: "wrong_password",
+			},
+			wantHTTPCode:    http.StatusUnauthorized,
+			wwwAuthenticate: `Basic realm="restricted", charset="UTF-8"`,
+		},
+		{
+			desc: "valid credentials",
+			auth: &BasicAuth{
+				User:     "test1",
+				Password: "1234",
+			},
+			wantHTTPCode:    http.StatusOK,
+			wwwAuthenticate: "",
+		},
 	}
 
-	err = a.VerifyCredentials("test2", "4321")
-	if err != nil {
-		t.Fail()
-	}
-}
+	for _, tC := range testCases {
+		t.Run(tC.desc, func(t *testing.T) {
+			// Create handler with auth middleware
+			userAuth, err := FromHtpasswd(htpasswd)
+			if err != nil {
+				t.Error(err)
+			}
+			handler := userAuth.Middleware(http.HandlerFunc(
+				func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(http.StatusOK)
+					w.Write([]byte("Success"))
+				},
+			))
 
-func dummyHandler(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Success"))
-}
+			// Create request with given basic auth header
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			if tC.auth != nil {
+				req.SetBasicAuth(tC.auth.User, tC.auth.Password)
+			}
 
-func TestMiddlewareUnauthorized(t *testing.T) {
-	userAuth := GetTestAuth(t)
-	handler := userAuth.Middleware(http.HandlerFunc(dummyHandler))
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
 
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.SetBasicAuth("test1", "invalid_password")
+			// Check the status code is what we expect
+			if rr.Code != tC.wantHTTPCode {
+				t.Errorf("handler returned wrong status code: got %v want %v", rr.Code, tC.wantHTTPCode)
+			}
 
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-
-	if status := rr.Code; status != http.StatusUnauthorized {
-		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusUnauthorized)
-	}
-
-	authHeader := rr.Header().Get("WWW-Authenticate")
-	expectedHeader := `Basic realm="restricted", charset="UTF-8"`
-	if authHeader != expectedHeader {
-		t.Errorf("handler returned wrong WWW-Authenticate header: got %v want %v", authHeader, expectedHeader)
-	}
-}
-
-func TestMiddlewareNoAuth(t *testing.T) {
-	userAuth := GetTestAuth(t)
-	handler := userAuth.Middleware(http.HandlerFunc(dummyHandler))
-
-	// No basic auth header
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-
-	if status := rr.Code; status != http.StatusUnauthorized {
-		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusUnauthorized)
-	}
-}
-
-func TestMiddlewareSuccess(t *testing.T) {
-	userAuth := GetTestAuth(t)
-	handler := userAuth.Middleware(http.HandlerFunc(dummyHandler))
-
-	// Valid credentials
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.SetBasicAuth("test1", "1234")
-
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-
-	if status := rr.Code; status != http.StatusOK {
-		t.Errorf("handler returned wrong status code: got %v want %v", status, http.StatusOK)
-	}
-
-	expected := "Success"
-	if rr.Body.String() != expected {
-		t.Errorf("handler returned unexpected body: got %v want %v", rr.Body.String(), expected)
+			// Check the WWW-Authenticate header is what we expect
+			wwwAuthenticate := rr.Header().Get("WWW-Authenticate")
+			if wwwAuthenticate != tC.wwwAuthenticate {
+				t.Errorf("handler returned wrong WWW-Authenticate header: got %v want %v", wwwAuthenticate, tC.wwwAuthenticate)
+			}
+		})
 	}
 }
