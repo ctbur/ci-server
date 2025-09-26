@@ -24,10 +24,7 @@ type ManualResult struct {
 	BuildID uint64 `json:"build_id"`
 }
 
-func handleManual(
-	s BuildCreationStore,
-	cfg *config.Config,
-) http.HandlerFunc {
+func handleManual(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := wlog.FromContext(r.Context())
 		ctx := r.Context()
@@ -45,23 +42,7 @@ func handleManual(
 			return
 		}
 
-		repo, err := s.GetRepo(ctx, payload.Owner, payload.Name)
-		if err != nil {
-			http.Error(w, "Failed to query repository data", http.StatusInternalServerError)
-			log.ErrorContext(ctx, "Failed to query repository data", slog.Any("error", err))
-			return
-		}
-
-		buildNumber, err := s.IncrementBuildCounter(ctx, repo.ID)
-		if err != nil {
-			http.Error(w, "Failed to increment build counter", http.StatusInternalServerError)
-			log.ErrorContext(ctx, "Failed to increment build counter", slog.Any("error", err))
-			return
-		}
-
 		build := store.BuildMeta{
-			RepoID:    repo.ID,
-			Number:    buildNumber,
 			Link:      payload.Link,
 			Ref:       payload.Ref,
 			CommitSHA: payload.CommitSHA,
@@ -69,7 +50,7 @@ func handleManual(
 			Author:    payload.Author,
 		}
 
-		buildID, err := s.CreateBuild(ctx, build)
+		buildID, err := b.CreateBuild(ctx, payload.Owner, payload.Name, build)
 		if err != nil {
 			http.Error(w, "Failed to create build", http.StatusInternalServerError)
 			log.ErrorContext(ctx, "Failed to create build", slog.Any("error", err))

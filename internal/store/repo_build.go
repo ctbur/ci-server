@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -23,59 +24,16 @@ type Repo struct {
 	RepoState
 }
 
-func (s PGStore) CreateRepo(ctx context.Context, repo RepoMeta) (uint64, error) {
-	var newID uint64
-
-	err := s.pool.QueryRow(
+func (s PGStore) CreateRepoIfNotExists(ctx context.Context, repo RepoMeta) error {
+	_, err := s.pool.Exec(
 		ctx,
-		`INSERT INTO repos (
-			owner,
-			name
-		) VALUES (
-			$1, $2
-		) RETURNING id`,
+		`INSERT INTO repos (owner, name)
+		VALUES ($1, $2)
+		ON CONFLICT (owner, name) DO NOTHING`,
 		repo.Owner,
 		repo.Name,
-	).Scan(&newID)
-
-	return newID, err
-}
-
-func (s PGStore) GetRepo(ctx context.Context, owner, name string) (*Repo, error) {
-	var repo Repo
-
-	err := s.pool.QueryRow(
-		ctx,
-		`SELECT id, owner, name, build_counter FROM repos
-		WHERE owner = $1 AND name = $2`,
-		owner,
-		name,
-	).Scan(
-		&repo.ID,
-		&repo.Owner,
-		&repo.Name,
-		&repo.BuildCounter,
 	)
-
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
-	return &repo, err
-}
-
-func (s PGStore) IncrementBuildCounter(ctx context.Context, repoID uint64) (uint64, error) {
-	var newBuildCounter uint64
-
-	err := s.pool.QueryRow(
-		ctx,
-		`UPDATE repos
-		SET build_counter = build_counter + 1
-		WHERE id = $1
-		RETURNING build_counter`,
-		repoID,
-	).Scan(&newBuildCounter)
-
-	return newBuildCounter, err
+	return err
 }
 
 type BuildResult string
@@ -94,8 +52,6 @@ const (
 )
 
 type BuildMeta struct {
-	RepoID    uint64
-	Number    uint64
 	Link      string
 	Ref       string
 	CommitSHA string
@@ -111,15 +67,44 @@ type BuildState struct {
 }
 
 type Build struct {
-	ID uint64
+	ID     uint64
+	RepoID uint64
+	Number uint64
 	BuildMeta
 	BuildState
 }
 
-func (s PGStore) CreateBuild(ctx context.Context, build BuildMeta) (uint64, error) {
+func (s PGStore) CreateBuild(ctx context.Context, repoOwner, repoName string, build BuildMeta) (uint64, error) {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// TODO: implement serializable retry logic
+
+	// Increment build counter
+	var repoID uint64
+	var buildNumber uint64
+
+	err = tx.QueryRow(
+		ctx,
+		`UPDATE repos
+		SET build_counter = build_counter + 1
+		WHERE owner = $1 AND name = $2
+		RETURNING id, build_counter`,
+		repoOwner,
+		repoName,
+	).Scan(&repoID, &buildNumber)
+
+	if err != nil {
+		return 0, fmt.Errorf("failed to increment build counter: %w", err)
+	}
+
+	// Create build
 	var newID uint64
 
-	err := s.pool.QueryRow(
+	err = s.pool.QueryRow(
 		ctx,
 		`INSERT INTO builds (
 			repo_id,
@@ -133,8 +118,8 @@ func (s PGStore) CreateBuild(ctx context.Context, build BuildMeta) (uint64, erro
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8
 		) RETURNING id`,
-		build.RepoID,
-		build.Number,
+		repoID,
+		buildNumber,
 		build.Link,
 		build.Ref,
 		build.CommitSHA,
@@ -142,6 +127,14 @@ func (s PGStore) CreateBuild(ctx context.Context, build BuildMeta) (uint64, erro
 		build.Author,
 		time.Now(),
 	).Scan(&newID)
+
+	if err != nil {
+		return 0, fmt.Errorf("failed to create build: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %w", err)
+	}
 
 	return newID, err
 }

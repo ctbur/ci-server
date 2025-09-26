@@ -12,17 +12,15 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/web/auth"
 )
 
-type BuildCreationStore interface {
-	GetRepo(ctx context.Context, owner, name string) (*store.Repo, error)
-	IncrementBuildCounter(ctx context.Context, repoID uint64) (uint64, error)
-	CreateBuild(ctx context.Context, build store.BuildMeta) (uint64, error)
+type BuildCreator interface {
+	CreateBuild(ctx context.Context, repoOwner, repoName string, build store.BuildMeta) (uint64, error)
 }
 
-func Handler(cfg *config.Config, userAuth auth.UserAuth, s BuildCreationStore) http.Handler {
+func Handler(cfg *config.Config, userAuth auth.UserAuth, b BuildCreator) http.Handler {
 	mux := http.NewServeMux()
 
-	mux.Handle("POST /manual", userAuth.Middleware(handleManual(s, cfg)))
-	mux.Handle("POST /github", handleGitHub(s, cfg))
+	mux.Handle("POST /manual", userAuth.Middleware(handleManual(b, cfg)))
+	mux.Handle("POST /github", handleGitHub(b, cfg))
 
 	return mux
 }

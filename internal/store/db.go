@@ -102,16 +102,7 @@ func ApplyMigrations(log *slog.Logger, ctx context.Context, pool *pgxpool.Pool, 
 
 func InitDatabase(ctx context.Context, pgStore *PGStore, cfg *config.Config) error {
 	for _, repoCfg := range cfg.Repos {
-		repo, err := pgStore.GetRepo(ctx, repoCfg.Owner, repoCfg.Name)
-		if err != nil {
-			return fmt.Errorf("failed to get repo %s/%s: %v\n", repoCfg.Owner, repoCfg.Name, err)
-		}
-
-		if repo != nil {
-			continue
-		}
-
-		_, err = pgStore.CreateRepo(
+		err := pgStore.CreateRepoIfNotExists(
 			ctx,
 			RepoMeta{
 				Owner: repoCfg.Owner,

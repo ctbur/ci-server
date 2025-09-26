@@ -16,10 +16,7 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/web/wlog"
 )
 
-func handleGitHub(
-	s BuildCreationStore,
-	cfg *config.Config,
-) http.HandlerFunc {
+func handleGitHub(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := wlog.FromContext(r.Context())
 		ctx := r.Context()
@@ -92,23 +89,7 @@ func handleGitHub(
 		}
 
 		// Create new build
-		repo, err := s.GetRepo(ctx, owner, name)
-		if err != nil {
-			http.Error(w, "Failed to query repository data", http.StatusInternalServerError)
-			log.ErrorContext(ctx, "Failed to query repository data", slog.Any("error", err))
-			return
-		}
-
-		buildNumber, err := s.IncrementBuildCounter(ctx, repo.ID)
-		if err != nil {
-			http.Error(w, "Failed to increment build counter", http.StatusInternalServerError)
-			log.ErrorContext(ctx, "Failed to increment build counter", slog.Any("error", err))
-			return
-		}
-
 		build := store.BuildMeta{
-			RepoID:    repo.ID,
-			Number:    buildNumber,
 			Link:      event.HeadCommit.URL,
 			Ref:       event.Ref,
 			CommitSHA: event.HeadCommit.ID,
@@ -116,7 +97,7 @@ func handleGitHub(
 			Author:    event.HeadCommit.Author.Username,
 		}
 
-		buildID, err := s.CreateBuild(ctx, build)
+		buildID, err := b.CreateBuild(ctx, owner, name, build)
 		if err != nil {
 			http.Error(w, "Failed to create build", http.StatusInternalServerError)
 			log.ErrorContext(ctx, "Failed to create build", slog.Any("error", err))
