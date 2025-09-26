@@ -17,9 +17,9 @@ CREATE TABLE builds (
     message TEXT NOT NULL,
     author VARCHAR(255) NOT NULL,
 
-    created TIMESTAMP NOT NULL,
-    started TIMESTAMP,
-    finished TIMESTAMP,
+    created TIMESTAMP WITH TIME ZONE NOT NULL,
+    started TIMESTAMP WITH TIME ZONE,
+    finished TIMESTAMP WITH TIME ZONE,
     result build_result,
 
     CONSTRAINT fk_repo

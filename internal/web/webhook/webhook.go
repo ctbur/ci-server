@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/config"
 	"github.com/ctbur/ci-server/v2/internal/store"
@@ -13,7 +14,7 @@ import (
 )
 
 type BuildCreator interface {
-	CreateBuild(ctx context.Context, repoOwner, repoName string, build store.BuildMeta) (uint64, error)
+	CreateBuild(ctx context.Context, repoOwner, repoName string, build store.BuildMeta, ts time.Time) (uint64, error)
 }
 
 func Handler(cfg *config.Config, userAuth auth.UserAuth, b BuildCreator) http.Handler {

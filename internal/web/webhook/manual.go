@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/config"
 	"github.com/ctbur/ci-server/v2/internal/store"
@@ -50,7 +51,7 @@ func handleManual(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 			Author:    payload.Author,
 		}
 
-		buildID, err := b.CreateBuild(ctx, payload.Owner, payload.Name, build)
+		buildID, err := b.CreateBuild(ctx, payload.Owner, payload.Name, build, time.Now())
 		if err != nil {
 			http.Error(w, "Failed to create build", http.StatusInternalServerError)
 			log.ErrorContext(ctx, "Failed to create build", slog.Any("error", err))

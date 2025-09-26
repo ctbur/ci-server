@@ -36,6 +36,12 @@ func (s PGStore) CreateRepoIfNotExists(ctx context.Context, repo RepoMeta) error
 	return err
 }
 
+func (s PGStore) CountRepos(ctx context.Context) (int, error) {
+	var count int
+	err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM repos`).Scan(&count)
+	return count, err
+}
+
 type BuildResult string
 
 const (
@@ -74,7 +80,12 @@ type Build struct {
 	BuildState
 }
 
-func (s PGStore) CreateBuild(ctx context.Context, repoOwner, repoName string, build BuildMeta) (uint64, error) {
+func (s PGStore) CreateBuild(
+	ctx context.Context,
+	repoOwner, repoName string,
+	build BuildMeta,
+	ts time.Time,
+) (uint64, error) {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
@@ -125,7 +136,7 @@ func (s PGStore) CreateBuild(ctx context.Context, repoOwner, repoName string, bu
 		build.CommitSHA,
 		build.Message,
 		build.Author,
-		time.Now(),
+		ts,
 	).Scan(&newID)
 
 	if err != nil {
@@ -160,6 +171,8 @@ type BuildWithRepoMeta struct {
 	Build
 	RepoMeta
 }
+
+var ErrNoBuild error = errors.New("build does not exist")
 
 func (s PGStore) GetBuild(ctx context.Context, buildID uint64) (*BuildWithRepoMeta, error) {
 	var b BuildWithRepoMeta
@@ -203,7 +216,7 @@ func (s PGStore) GetBuild(ctx context.Context, buildID uint64) (*BuildWithRepoMe
 	)
 
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+		return nil, ErrNoBuild
 	}
 
 	return &b, err
@@ -303,4 +316,9 @@ func (s PGStore) GetPendingBuilds(ctx context.Context) ([]BuildWithRepoMeta, err
 			)
 			return b, err
 		})
+}
+
+func (s PGStore) TruncateAll(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, `TRUNCATE TABLE builds, repos RESTART IDENTITY CASCADE`)
+	return err
 }

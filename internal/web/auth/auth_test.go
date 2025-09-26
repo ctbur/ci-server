@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/ctbur/ci-server/v2/internal/assert"
 )
 
 const htpasswd = `
@@ -57,11 +59,11 @@ func TestVerifyCredentials(t *testing.T) {
 		},
 	}
 
-	for _, tC := range testCases {
-		t.Run(tC.desc, func(t *testing.T) {
-			gotError := userAuth.VerifyCredentials(tC.username, tC.password)
-			if !errors.Is(gotError, tC.wantError) {
-				t.Errorf("got %v, want %v", gotError, tC.wantError)
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			gotError := userAuth.VerifyCredentials(tc.username, tc.password)
+			if !errors.Is(gotError, tc.wantError) {
+				t.Errorf("got %v, want %v", gotError, tc.wantError)
 			}
 		})
 	}
@@ -104,8 +106,8 @@ func TestMiddleware(t *testing.T) {
 		},
 	}
 
-	for _, tC := range testCases {
-		t.Run(tC.desc, func(t *testing.T) {
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
 			// Create handler with auth middleware
 			userAuth, err := FromHtpasswd(htpasswd)
 			if err != nil {
@@ -120,23 +122,18 @@ func TestMiddleware(t *testing.T) {
 
 			// Create request with given basic auth header
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
-			if tC.auth != nil {
-				req.SetBasicAuth(tC.auth.User, tC.auth.Password)
+			if tc.auth != nil {
+				req.SetBasicAuth(tc.auth.User, tc.auth.Password)
 			}
 
 			rr := httptest.NewRecorder()
 			handler.ServeHTTP(rr, req)
 
-			// Check the status code is what we expect
-			if rr.Code != tC.wantHTTPCode {
-				t.Errorf("handler returned wrong status code: got %v want %v", rr.Code, tC.wantHTTPCode)
-			}
-
-			// Check the WWW-Authenticate header is what we expect
-			wwwAuthenticate := rr.Header().Get("WWW-Authenticate")
-			if wwwAuthenticate != tC.wwwAuthenticate {
-				t.Errorf("handler returned wrong WWW-Authenticate header: got %v want %v", wwwAuthenticate, tC.wwwAuthenticate)
-			}
+			assert.Equal(t, rr.Code, tc.wantHTTPCode, "handler returned wrong status code")
+			assert.Equal(
+				t, rr.Header().Get("WWW-Authenticate"), tc.wwwAuthenticate,
+				"handler returned wrong WWW-Authenticate header",
+			)
 		})
 	}
 }

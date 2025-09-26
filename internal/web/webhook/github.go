@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/config"
 	"github.com/ctbur/ci-server/v2/internal/store"
@@ -97,7 +98,7 @@ func handleGitHub(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 			Author:    event.HeadCommit.Author.Username,
 		}
 
-		buildID, err := b.CreateBuild(ctx, owner, name, build)
+		buildID, err := b.CreateBuild(ctx, owner, name, build, time.Now())
 		if err != nil {
 			http.Error(w, "Failed to create build", http.StatusInternalServerError)
 			log.ErrorContext(ctx, "Failed to create build", slog.Any("error", err))
