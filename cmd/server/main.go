@@ -86,12 +86,12 @@ func run() error {
 	pgStore := store.NewPGStore(pool)
 	store.InitDatabase(ctx, &pgStore, cfg)
 
-	buildDispatcher := build.Dispatcher{
+	processor := build.Processor{
 		Builds: pgStore,
 		Logs:   pgStore,
 		Cfg:    cfg,
 	}
-	go buildDispatcher.Run(slog.Default(), ctx)
+	go processor.Run(slog.Default(), ctx)
 
 	handler := web.Handler(cfg, userAuth, pgStore, tmpl, "ui/static/")
 	web.RunServer(slog.Default(), handler, 8000)

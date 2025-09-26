@@ -17,7 +17,7 @@ import (
 )
 
 func handleGitHub(
-	s BuildStore,
+	s BuildCreationStore,
 	cfg *config.Config,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

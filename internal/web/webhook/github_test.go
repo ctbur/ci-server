@@ -1,6 +1,6 @@
 package webhook
 
-const secret = "1234"
+const webhookSecret = "1234"
 
 const headers = `Request URL: https://example.com/postreceive
 Request method: POST

@@ -23,12 +23,6 @@ type Repo struct {
 	RepoState
 }
 
-type RepoStore interface {
-	Create(ctx context.Context, repo RepoMeta) (uint64, error)
-	IncrementBuildCounter(ctx context.Context, repoID uint64) (uint64, error)
-	Get(ctx context.Context, owner, name string) (*Repo, error)
-}
-
 func (s PGStore) CreateRepo(ctx context.Context, repo RepoMeta) (uint64, error) {
 	var newID uint64
 
@@ -74,7 +68,11 @@ func (s PGStore) IncrementBuildCounter(ctx context.Context, repoID uint64) (uint
 
 	err := s.pool.QueryRow(
 		ctx,
-		`UPDATE repos SET build_counter = build_counter + 1 RETURNING build_counter`,
+		`UPDATE repos
+		SET build_counter = build_counter + 1
+		WHERE id = $1
+		RETURNING build_counter`,
+		repoID,
 	).Scan(&newBuildCounter)
 
 	return newBuildCounter, err
@@ -160,6 +158,8 @@ func (s PGStore) UpdateBuildState(ctx context.Context, buildID uint64, state Bui
 		state.Result,
 		buildID,
 	)
+
+	// TODO: return error if no rows were affected (build not found)
 	return err
 }
 
@@ -265,9 +265,7 @@ func (s PGStore) ListBuilds(ctx context.Context) ([]BuildWithRepoMeta, error) {
 	})
 }
 
-func (s PGStore) GetPendingBuilds(
-	ctx context.Context,
-) ([]BuildWithRepoMeta, error) {
+func (s PGStore) GetPendingBuilds(ctx context.Context) ([]BuildWithRepoMeta, error) {
 	rows, err := s.pool.Query(
 		ctx,
 		`SELECT

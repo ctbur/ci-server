@@ -10,8 +10,8 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/store"
 )
 
-type Dispatcher struct {
-	Builds   BuildRepository
+type Processor struct {
+	Builds   BuildProcessingStore
 	Logs     LogConsumer
 	Cfg      *config.Config
 	builders []Builder
@@ -19,11 +19,11 @@ type Dispatcher struct {
 
 const dispatchPollPeriod = 500 * time.Millisecond
 
-func (d *Dispatcher) Run(log *slog.Logger, ctx context.Context) error {
+func (p *Processor) Run(log *slog.Logger, ctx context.Context) error {
 	for {
 		select {
 		case <-time.After(dispatchPollPeriod):
-			d.dispatch(log, ctx)
+			p.dispatch(log, ctx)
 
 		case <-ctx.Done():
 			return nil
@@ -31,19 +31,19 @@ func (d *Dispatcher) Run(log *slog.Logger, ctx context.Context) error {
 	}
 }
 
-type BuildRepository interface {
+type BuildProcessingStore interface {
 	GetPendingBuilds(ctx context.Context) ([]store.BuildWithRepoMeta, error)
 	UpdateBuildState(ctx context.Context, buildID uint64, state store.BuildState) error
 }
 
-func (d *Dispatcher) dispatch(log *slog.Logger, ctx context.Context) {
+func (p *Processor) dispatch(log *slog.Logger, ctx context.Context) {
 	// Handle finished builds
 	var newBuilders []Builder
-	for _, builder := range d.builders {
+	for _, builder := range p.builders {
 		select {
 		case res := <-builder.resChan:
 			// Publish final build result
-			d.Builds.UpdateBuildState(ctx, builder.buildID, res.buildState)
+			p.Builds.UpdateBuildState(ctx, builder.buildID, res.buildState)
 
 			if res.err != nil {
 				log.ErrorContext(ctx, "internal error during build", slog.Any("error", res.err))
@@ -53,10 +53,10 @@ func (d *Dispatcher) dispatch(log *slog.Logger, ctx context.Context) {
 			newBuilders = append(newBuilders, builder)
 		}
 	}
-	d.builders = newBuilders
+	p.builders = newBuilders
 
 	// Handle pending builds
-	pendingBuilds, err := d.Builds.GetPendingBuilds(ctx)
+	pendingBuilds, err := p.Builds.GetPendingBuilds(ctx)
 	if err != nil {
 		log.ErrorContext(ctx, "failed to get pending builds", slog.Any("error", err))
 		return
@@ -68,16 +68,16 @@ func (d *Dispatcher) dispatch(log *slog.Logger, ctx context.Context) {
 		// Update start time for build
 		now := time.Now()
 		bld.Started = &now
-		d.Builds.UpdateBuildState(ctx, bld.ID, bld.BuildState)
+		p.Builds.UpdateBuildState(ctx, bld.ID, bld.BuildState)
 
 		// Start build routine
 		// TODO: limit builds by number or resource usage
-		builder, err := d.runBuilder(bld)
+		builder, err := p.runBuilder(bld)
 		if err != nil {
 			log.ErrorContext(ctx, "failed to run builder", slog.Any("error", err))
 			continue
 		}
-		d.builders = append(d.builders, *builder)
+		p.builders = append(p.builders, *builder)
 	}
 }
 
@@ -92,8 +92,8 @@ type BuildResult struct {
 	err        error
 }
 
-func (d *Dispatcher) runBuilder(bld *store.BuildWithRepoMeta) (*Builder, error) {
-	repoConfig := d.Cfg.GetRepoConfig(bld.Owner, bld.Name)
+func (p *Processor) runBuilder(bld *store.BuildWithRepoMeta) (*Builder, error) {
+	repoConfig := p.Cfg.GetRepoConfig(bld.Owner, bld.Name)
 	if repoConfig == nil {
 		return nil, fmt.Errorf("missing build config for %s/%s", bld.Owner, bld.Name)
 	}
@@ -101,7 +101,7 @@ func (d *Dispatcher) runBuilder(bld *store.BuildWithRepoMeta) (*Builder, error) 
 	resChan := make(chan BuildResult)
 
 	go func() {
-		exitCode, err := build(bld, d.Cfg.BuildDir, repoConfig.BuildCommand, d.Logs)
+		exitCode, err := build(bld, p.Cfg.BuildDir, repoConfig.BuildCommand, p.Logs)
 
 		buildState := bld.BuildState
 

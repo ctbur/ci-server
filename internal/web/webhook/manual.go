@@ -25,7 +25,7 @@ type ManualResult struct {
 }
 
 func handleManual(
-	s BuildStore,
+	s BuildCreationStore,
 	cfg *config.Config,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
