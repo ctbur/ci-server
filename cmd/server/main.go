@@ -26,31 +26,26 @@ func main() {
 }
 
 func run() error {
-	postgres := embeddedpostgres.NewDatabase(
-		embeddedpostgres.DefaultConfig().
-			Username("ci-server").
-			Password("123456").
-			Database("ci").
-			CachePath("./data/postgres/").
-			RuntimePath("./data/postgres/extracted").
-			// Configures data to be persistent because DataPath is outside RuntimePath
-			DataPath("./data/postgres/data").
-			BinariesPath("./data/postgres/extracted"),
-	)
-	databaseUrl := "postgresql://ci-server:123456@localhost:5432/ci"
-	err := postgres.Start()
-	if err != nil {
-		return fmt.Errorf("failed to start embedded Postgres: %v\n", err)
-	}
-	defer func() {
-		err := postgres.Stop()
+	var postgresURL string
+	if os.Getenv("CI_SERVER_DEV") == "1" {
+		slog.Info("Starting in development mode")
+		err, embeddedPostgresURL, cleanup := startDevDatabase()
 		if err != nil {
-			slog.Error("failed to stop embedded Postgres", slog.Any("error", err))
+			return err
 		}
-	}()
+		postgresURL = embeddedPostgresURL
+		defer cleanup()
+		slog.Info("Embedded Postgres started")
+	} else {
+		postgresURL = os.Getenv("CI_SERVER_POSTGRES_URL")
+		if postgresURL == "" {
+			return fmt.Errorf("CI_SERVER_POSTGRES_URL not set")
+		}
+		slog.Info("Starting in production mode")
+	}
 
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, databaseUrl)
+	pool, err := pgxpool.New(ctx, postgresURL)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %v", err)
 	}
@@ -72,6 +67,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("failed to load users.htpasswd: %v", err)
 	}
+
 	userAuth, err := auth.FromHtpasswd(string(htpasswd))
 	if err != nil {
 		return fmt.Errorf("failed to decode users.htpasswd: %v", err)
@@ -96,4 +92,30 @@ func run() error {
 	handler := web.Handler(cfg, userAuth, pgStore, tmpl, "ui/static/")
 	web.RunServer(slog.Default(), handler, 8000)
 	return nil
+}
+
+func startDevDatabase() (error, string, func()) {
+	postgres := embeddedpostgres.NewDatabase(
+		embeddedpostgres.DefaultConfig().
+			Username("ci-server").
+			Password("123456").
+			Database("ci").
+			CachePath("./data/postgres/").
+			RuntimePath("./data/postgres/extracted").
+			// Configures data to be persistent because DataPath is outside RuntimePath
+			DataPath("./data/postgres/data").
+			BinariesPath("./data/postgres/extracted"),
+	)
+	err := postgres.Start()
+	if err != nil {
+		return fmt.Errorf("failed to start embedded Postgres: %v\n", err), "", nil
+	}
+	return nil, "postgresql://ci-server:123456@localhost:5432/ci", func() {
+		err := postgres.Stop()
+		if err != nil {
+			slog.Error("failed to stop embedded Postgres", slog.Any("error", err))
+			return
+		}
+		slog.Info("embedded Postgres stopped")
+	}
 }

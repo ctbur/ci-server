@@ -16,17 +16,35 @@ import (
 
 func StartTestDatabase(
 	t *testing.T, ctx context.Context, repoDir string,
-) (error, *pgxpool.Pool, func()) {
+) (err error, pool *pgxpool.Pool, cleanup func()) {
+	var tempDir string
+	var postgres *embeddedpostgres.EmbeddedPostgres
+
+	// Cleanup in case of error
+	defer func() {
+		if err != nil {
+			if pool != nil {
+				pool.Close()
+			}
+			if postgres != nil {
+				_ = postgres.Stop()
+			}
+			if tempDir != "" {
+				os.RemoveAll(tempDir)
+			}
+		}
+	}()
+
 	// Acquire temp dir
-	tempDir, err := os.MkdirTemp(os.TempDir(), "ci-server-test")
+	tempDir, err = os.MkdirTemp(os.TempDir(), "ci-server-test")
 	if err != nil {
-		panic("failed to create temp dir for embedded Postgres")
+		return fmt.Errorf("failed to create temp dir for embedded Postgres: %w", err), nil, nil
 	}
 
 	// Acquire free port
 	port, err := getFreePort()
 
-	postgres := embeddedpostgres.NewDatabase(
+	postgres = embeddedpostgres.NewDatabase(
 		embeddedpostgres.DefaultConfig().
 			Username("ci-server").
 			Password("123456").
@@ -40,7 +58,6 @@ func StartTestDatabase(
 
 	err = postgres.Start()
 	if err != nil {
-		os.RemoveAll(tempDir)
 		return fmt.Errorf("failed to start embedded Postgres: %v\n", err), nil, nil
 	}
 
@@ -49,10 +66,8 @@ func StartTestDatabase(
 		port,
 	)
 
-	pool, err := pgxpool.New(ctx, databaseUrl)
+	pool, err = pgxpool.New(ctx, databaseUrl)
 	if err != nil {
-		_ = postgres.Stop()
-		os.RemoveAll(tempDir)
 		return fmt.Errorf("failed to connect to database: %v", err), nil, nil
 	}
 
@@ -60,9 +75,6 @@ func StartTestDatabase(
 	migrationsDir := path.Join(repoDir, "migrations")
 	err = ApplyMigrations(log, ctx, pool, migrationsDir)
 	if err != nil {
-		pool.Close()
-		_ = postgres.Stop()
-		os.RemoveAll(tempDir)
 		return fmt.Errorf("failed to apply migrations: %v", err), nil, nil
 	}
 
