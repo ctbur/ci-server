@@ -10,7 +10,8 @@ import (
 
 type BuildStoreImpl interface {
 	CreateRepoIfNotExists(ctx context.Context, repo RepoMeta) error
-	CreateBuild(ctx context.Context, repoOwner, repoName string, build BuildMeta) (uint64, error)
+	CountRepos(ctx context.Context) (uint64, error)
+	CreateBuild(ctx context.Context, repoOwner, repoName string, build BuildMeta, ts time.Time) (uint64, error)
 	UpdateBuildState(ctx context.Context, buildID uint64, state BuildState) error
 	GetBuild(ctx context.Context, buildID uint64) (*BuildWithRepoMeta, error)
 	ListBuilds(ctx context.Context) ([]BuildWithRepoMeta, error)
@@ -18,8 +19,7 @@ type BuildStoreImpl interface {
 }
 
 func TestBuildStore(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	ctx := context.Background()
 
 	err, pool, cleanup := StartTestDatabase(t, ctx, "../../")
 	if err != nil {
@@ -28,7 +28,15 @@ func TestBuildStore(t *testing.T) {
 	defer cleanup()
 
 	s := NewPGStore(pool)
+	BuildStoreTest(t, ctx, s)
+}
 
+func TestBuildStoreMock(t *testing.T) {
+	ctx := context.Background()
+	BuildStoreTest(t, ctx, NewMockBuildStore())
+}
+
+func BuildStoreTest(t *testing.T, ctx context.Context, s BuildStoreImpl) {
 	t.Run("Create new repositories", func(t *testing.T) {
 		err := s.CreateRepoIfNotExists(ctx, RepoMeta{
 			Owner: "owner",

@@ -12,6 +12,10 @@ type loggerKey struct{}
 
 func FromContext(ctx context.Context) *slog.Logger {
 	logger := ctx.Value(loggerKey{})
+	if logger == nil {
+		return slog.Default()
+	}
+
 	return logger.(*slog.Logger)
 }
 

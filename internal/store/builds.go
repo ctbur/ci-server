@@ -36,8 +36,8 @@ func (s PGStore) CreateRepoIfNotExists(ctx context.Context, repo RepoMeta) error
 	return err
 }
 
-func (s PGStore) CountRepos(ctx context.Context) (int, error) {
-	var count int
+func (s PGStore) CountRepos(ctx context.Context) (uint64, error) {
+	var count uint64
 	err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM repos`).Scan(&count)
 	return count, err
 }

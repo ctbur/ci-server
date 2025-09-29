@@ -23,7 +23,7 @@ func handleGitHub(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 		ctx := r.Context()
 
 		// Only process push events
-		if r.Header.Get("X-GitHub-Event") == "push" {
+		if r.Header.Get("X-GitHub-Event") != "push" {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -75,7 +75,7 @@ func handleGitHub(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 
 		signature := r.Header.Get("X-Hub-Signature-256")
 		if len(signature) == 0 {
-			http.Error(w, "Missing X-Hub-Signature-256 header", http.StatusBadRequest)
+			http.Error(w, "Missing X-Hub-Signature-256 header", http.StatusUnauthorized)
 			return
 		}
 		signature = strings.TrimPrefix(signature, "sha256=")
