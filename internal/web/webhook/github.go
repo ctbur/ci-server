@@ -89,6 +89,12 @@ func handleGitHub(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 			return
 		}
 
+		// Ignore events with no head commit (e.g. branch deletions)
+		if event.HeadCommit == nil {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
 		// Create new build
 		build := store.BuildMeta{
 			Link:      event.HeadCommit.URL,
@@ -134,5 +140,5 @@ type PushEventRepository struct {
 type PushEvent struct {
 	Ref        string              `json:"ref"`
 	Repo       PushEventRepository `json:"repository"`
-	HeadCommit HeadCommit          `json:"head_commit"`
+	HeadCommit *HeadCommit         `json:"head_commit"`
 }
