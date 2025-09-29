@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/config"
@@ -51,14 +52,13 @@ func handleBuildList(s store.PGStore, tmpl *template.Template) http.HandlerFunc 
 
 		buildCards := make([]BuildCard, len(builds))
 		for i, b := range builds {
-
 			card := BuildCard{
 				ID:        b.ID,
 				Status:    buildStatus(b.BuildState),
-				Message:   b.Message,
+				Message:   shortCommitMessage(b.Message),
 				Author:    b.Author,
 				Ref:       b.Ref,
-				CommitSHA: b.CommitSHA[:7],
+				CommitSHA: b.CommitSHA[:min(7, len(b.CommitSHA))],
 				Duration:  durationSinceBuildStart(b.BuildState),
 				Started:   b.Started,
 			}
@@ -138,7 +138,7 @@ func handleBuildDetails(s store.PGStore, tmpl *template.Template) http.HandlerFu
 			RepoOwner: build.Owner,
 			RepoName:  build.Name,
 			Status:    buildStatus(build.BuildState),
-			Message:   build.Message,
+			Message:   shortCommitMessage(build.Message),
 			Number:    build.Number,
 			Started:   build.Started,
 			Duration:  durationSinceBuildStart(build.BuildState),
@@ -179,4 +179,9 @@ func buildStatus(b store.BuildState) string {
 		return "running"
 	}
 	return "pending"
+}
+
+func shortCommitMessage(msg string) string {
+	trimmed := strings.TrimSpace(msg)
+	return strings.SplitN(trimmed, "\n", 2)[0]
 }
