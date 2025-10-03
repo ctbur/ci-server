@@ -1,4 +1,4 @@
-build_dir = "./data/build"
+data_dir = "./data/build"
 
 [[repos]]
 owner = "encode"

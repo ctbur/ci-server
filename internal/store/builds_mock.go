@@ -80,14 +80,27 @@ func (s MockBuildStore) CreateBuild(
 	return newBuildID, nil
 }
 
-func (s MockBuildStore) UpdateBuildState(ctx context.Context, buildID uint64, state BuildState) error {
+func (s MockBuildStore) MarkBuildStarted(ctx context.Context, buildID uint64, started time.Time) error {
 	build, exists := s.builds[buildID]
 	if !exists {
 		// TODO: return error in real implementation
 		return nil
 	}
 
-	build.BuildState = state
+	build.BuildState.Started = &started
+	s.builds[buildID] = build
+	return nil
+}
+
+func (s MockBuildStore) MarkBuildFinished(ctx context.Context, buildID uint64, finished time.Time, result BuildResult) error {
+	build, exists := s.builds[buildID]
+	if !exists {
+		// TODO: return error in real implementation
+		return nil
+	}
+
+	build.BuildState.Finished = &finished
+	build.BuildState.Result = &result
 	s.builds[buildID] = build
 	return nil
 }

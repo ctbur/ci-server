@@ -2,64 +2,60 @@ package build
 
 import (
 	"fmt"
-	"os"
 	"path"
 	"strconv"
-
-	"github.com/ctbur/ci-server/v2/internal/store"
 )
 
-const defaultBranchCache = "default"
-const defaultPerms = 0700
+/*
+ * Directory structure:
+ * rootDir/
+ *   build/
+ *     <ID>/             build dir for build with ID
+ *	     files/          actual build files
+ *       builder.json    metadata of the builder
+ *       exit_code       exit code of the build command
+ *   cache/
+ *     <owner>/
+ *       <repo>/
+ *         <ID>/         cache for default branch
+ *   logs/
+ *     <ID>.jsonl        log file for build with ID
+ *
+ *
+ * The cache dir is used to speed up builds on the default branch.
+ * It is copied into the build dir before the build starts.
+ * After a successful build on the default branch, the build dir
+ * is moved to the cache dir.
+ */
 
-func getBuildAndCacheDirs(rootDir string, repo *store.RepoMeta, buildID uint64) (string, string) {
-	repoDir := fmt.Sprintf("%s/%s", repo.Owner, repo.Name)
-	buildDir := path.Join(rootDir, repoDir, strconv.FormatUint(buildID, 10))
-	cacheDir := path.Join(rootDir, repoDir, defaultBranchCache)
-	return buildDir, cacheDir
+func getBuilderFile(dataDir string, buildID uint64) string {
+	return path.Join(getBuildDir(dataDir, buildID), "builder.json")
 }
 
-func allocateBuildDir(rootDir string, repo *store.RepoMeta, buildID uint64) (string, *string, error) {
-	buildDir, cacheDir := getBuildAndCacheDirs(rootDir, repo, buildID)
-
-	// Create a dedicated build dir
-	if err := os.MkdirAll(buildDir, defaultPerms); err != nil {
-		return "", nil, fmt.Errorf("failed to obtain repo build dir '%s': %w", buildDir, err)
-	}
-
-	// Copy the contents of the default branch cache
-	fi, err := os.Stat(cacheDir)
-	if os.IsNotExist(err) {
-		// Nothing to copy
-		return buildDir, nil, nil
-	}
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to obtain repo cache dir '%s': %w", cacheDir, err)
-	}
-	if !fi.Mode().IsDir() {
-		return "", nil, fmt.Errorf("repo cache path '%s' is not a directory", cacheDir)
-	}
-
-	return buildDir, &cacheDir, nil
+func getLogFile(dataDir string, buildID uint64) string {
+	return path.Join(dataDir, "logs", fmt.Sprintf("%d.jsonl", buildID))
 }
 
-func freeBuildDir(rootDir string, repo *store.RepoMeta, buildID uint64, makeCache bool) error {
-	buildDir, cacheDir := getBuildAndCacheDirs(rootDir, repo, buildID)
+func getBuildFilesDir(dataDir string, buildID uint64) string {
+	return path.Join(getBuildDir(dataDir, buildID), "files")
+}
 
-	if makeCache {
-		// Cache the build results
-		// TODO: figure out how to avoid concurrency issues when other build is copying cache dir
-		if err := os.RemoveAll(cacheDir); err != nil {
-			return fmt.Errorf("failed to clean up cache dir '%s': %w", cacheDir, err)
-		}
-		if err := os.Rename(buildDir, cacheDir); err != nil {
-			return fmt.Errorf("failed to turn build dir '%s' into cache dir '%s': %w", buildDir, cacheDir, err)
-		}
-	} else {
-		if err := os.RemoveAll(buildDir); err != nil {
-			return fmt.Errorf("failed to clean up build dir '%s': %w", buildDir, err)
-		}
-	}
+func getExitCodeFile(dataDir string, buildID uint64) string {
+	return path.Join(getBuildDir(dataDir, buildID), "exit_code")
+}
 
-	return nil
+func getBuildDir(dataDir string, buildID uint64) string {
+	return path.Join(getBuildRoot(dataDir), strconv.FormatUint(buildID, 10))
+}
+
+func getBuildRoot(dataDir string) string {
+	return path.Join(dataDir, "build")
+}
+
+func getCacheDir(dataDir string, repoOwner, repoName string, cacheID uint64) string {
+	return path.Join(getCacheRootDir(dataDir, repoOwner, repoName), strconv.FormatUint(cacheID, 10))
+}
+
+func getCacheRootDir(dataDir string, repoOwner, repoName string) string {
+	return path.Join(dataDir, "cache", repoOwner, repoName)
 }

@@ -150,16 +150,28 @@ func (s PGStore) CreateBuild(
 	return newID, err
 }
 
-func (s PGStore) UpdateBuildState(ctx context.Context, buildID uint64, state BuildState) error {
+func (s PGStore) MarkBuildStarted(ctx context.Context, buildID uint64, started time.Time) error {
 	_, err := s.pool.Exec(
 		ctx,
 		`UPDATE builds
-		SET created = $1, started = $2, finished = $3, result = $4
-		WHERE id = $5`,
-		state.Created,
-		state.Started,
-		state.Finished,
-		state.Result,
+		SET started = $1
+		WHERE id = $2`,
+		started,
+		buildID,
+	)
+
+	// TODO: return error if no rows were affected (build not found)
+	return err
+}
+
+func (s PGStore) MarkBuildFinished(ctx context.Context, buildID uint64, finished time.Time, result BuildResult) error {
+	_, err := s.pool.Exec(
+		ctx,
+		`UPDATE builds
+		SET finished = $1, result = $2
+		WHERE id = $3`,
+		finished,
+		result,
 		buildID,
 	)
 

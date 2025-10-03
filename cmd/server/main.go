@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log/slog"
 	"os"
+	"path"
 
 	"github.com/ctbur/ci-server/v2/internal/build"
 	"github.com/ctbur/ci-server/v2/internal/config"
@@ -18,14 +19,21 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	var err error
+	if len(os.Args) > 2 && os.Args[1] == "builder" {
+		err = build.RunBuilderFromEnv()
+	} else {
+		err = runServer()
+	}
+
+	if err != nil {
 		slog.Error("Fatal error", slog.Any("error", err))
 		os.Exit(1)
 	}
 	os.Exit(0)
 }
 
-func run() error {
+func runServer() error {
 	var postgresURL string
 	if os.Getenv("CI_SERVER_DEV") == "1" {
 		slog.Info("Starting in development mode")
@@ -84,12 +92,14 @@ func run() error {
 
 	processor := build.Processor{
 		Builds: pgStore,
-		Logs:   pgStore,
 		Cfg:    cfg,
 	}
 	go processor.Run(slog.Default(), ctx)
 
-	handler := web.Handler(cfg, userAuth, pgStore, tmpl, "ui/static/")
+	logStore := store.LogStore{
+		LogDir: path.Join(cfg.DataDir, "logs"),
+	}
+	handler := web.Handler(cfg, userAuth, pgStore, logStore, tmpl, "ui/static/")
 	web.RunServer(slog.Default(), handler, 8000)
 	return nil
 }

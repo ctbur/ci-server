@@ -7,8 +7,8 @@ import (
 )
 
 type Config struct {
-	BuildDir string       `toml:"build_dir"`
-	Repos    []RepoConfig `toml:"repos"`
+	DataDir string       `toml:"data_dir"`
+	Repos   []RepoConfig `toml:"repos"`
 }
 
 type RepoConfig struct {

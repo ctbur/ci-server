@@ -12,7 +12,8 @@ type BuildStoreImpl interface {
 	CreateRepoIfNotExists(ctx context.Context, repo RepoMeta) error
 	CountRepos(ctx context.Context) (uint64, error)
 	CreateBuild(ctx context.Context, repoOwner, repoName string, build BuildMeta, ts time.Time) (uint64, error)
-	UpdateBuildState(ctx context.Context, buildID uint64, state BuildState) error
+	MarkBuildStarted(ctx context.Context, buildID uint64, started time.Time) error
+	MarkBuildFinished(ctx context.Context, buildID uint64, finished time.Time, result BuildResult) error
 	GetBuild(ctx context.Context, buildID uint64) (*BuildWithRepoMeta, error)
 	ListBuilds(ctx context.Context) ([]BuildWithRepoMeta, error)
 	GetPendingBuilds(ctx context.Context) ([]BuildWithRepoMeta, error)
@@ -161,7 +162,8 @@ func BuildStoreTest(t *testing.T, ctx context.Context, s BuildStoreImpl) {
 			Result:   &result,
 		}
 
-		s.UpdateBuildState(ctx, 3, r2b1want)
+		s.MarkBuildStarted(ctx, 3, *r2b1want.Started)
+		s.MarkBuildFinished(ctx, 3, *r2b1want.Finished, *r2b1want.Result)
 
 		r2b1got, err := s.GetBuild(ctx, 3)
 		assert.NoError(t, err, "Failed to get build")
