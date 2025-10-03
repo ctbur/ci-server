@@ -155,13 +155,15 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 		}
 
 		pid, err := startBuilder(
-			p.Cfg.DataDir,
-			bld.ID,
-			bld.Owner,
-			bld.Name,
-			bld.CommitSHA,
-			repoConfig.BuildCommand,
-			cacheID,
+			BuilderParams{
+				DataDir:   p.Cfg.DataDir,
+				BuildID:   bld.ID,
+				RepoOwner: bld.Owner,
+				RepoName:  bld.Name,
+				CommitSHA: bld.CommitSHA,
+				Cmd:       repoConfig.BuildCommand,
+				CacheID:   cacheID,
+			},
 		)
 		if err != nil {
 			log.ErrorContext(ctx, "failed to start builder", slog.Any("error", err))

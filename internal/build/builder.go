@@ -18,18 +18,19 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/store"
 )
 
+type BuilderParams struct {
+	DataDir   string   `json:"data_dir"`
+	BuildID   uint64   `json:"build_id"`
+	RepoOwner string   `json:"repo_owner"`
+	RepoName  string   `json:"repo_name"`
+	CommitSHA string   `json:"commit_sha"`
+	Cmd       []string `json:"cmd"`
+	CacheID   *uint64  `json:"cache_id"`
+}
+
 // Create a new builder process by starting the same executable as the current
-// process, but with the "builder" argument. All arguments are passed as
-// environment variables.
-func startBuilder(
-	dataDir string,
-	buildID uint64,
-	repoOwner string,
-	repoName string,
-	commitSHA string,
-	cmd []string,
-	cacheID *uint64,
-) (int, error) {
+// process, but with the "builder" argument.
+func startBuilder(params BuilderParams) (int, error) {
 	// TODO: point to log file for builder itself
 
 	exe, err := os.Executable()
@@ -37,26 +38,19 @@ func startBuilder(
 		return 0, fmt.Errorf("failed to get executable path: %w", err)
 	}
 
-	builderCmd := exec.Command(
-		exe,
-		"builder",
-	)
+	// Add builder params to env var
 	var env []string
-	env = append(env, fmt.Sprintf("CI_BUILDER_DATA_DIR=%s", dataDir))
-	env = append(env, fmt.Sprintf("CI_BUILDER_BUILD_ID=%d", buildID))
-	env = append(env, fmt.Sprintf("CI_BUILDER_REPO_OWNER=%s", repoOwner))
-	env = append(env, fmt.Sprintf("CI_BUILDER_REPO_NAME=%s", repoName))
-	env = append(env, fmt.Sprintf("CI_BUILDER_COMMIT_SHA=%s", commitSHA))
-	cmdSer, err := json.Marshal(cmd)
+	paramsJSON, err := json.Marshal(&params)
 	if err != nil {
-		return 0, fmt.Errorf("failed to marshal string list to JSON: %w", err)
+		return 0, fmt.Errorf("failed to build params to JSON: %w", err)
 	}
-	env = append(env, fmt.Sprintf("CI_BUILDER_CMD=%s", cmdSer))
-	if cacheID != nil {
-		env = append(env, fmt.Sprintf("CI_BUILDER_CACHE_ID=%d", *cacheID))
-	}
-	builderCmd.Env = append(os.Environ(), env...)
+	env = append(env, fmt.Sprintf("CI_BUILDER_PARAMS=%s", paramsJSON))
 
+	// Set build ID separately as it helps with identification of the builder process
+	env = append(env, fmt.Sprintf("CI_BUILDER_BUILD_ID=%d", params.BuildID))
+
+	builderCmd := exec.Command(exe, "builder")
+	builderCmd.Env = append(os.Environ(), env...)
 	if err := builderCmd.Start(); err != nil {
 		return 0, fmt.Errorf("failed to start builder process: %w", err)
 	}
@@ -64,51 +58,25 @@ func startBuilder(
 	return builderCmd.Process.Pid, nil
 }
 
-func RunBuilderFromEnv() error {
-	// Read environment variables
-	dataDir := os.Getenv("CI_BUILDER_DATA_DIR")
-	buildIDStr := os.Getenv("CI_BUILDER_BUILD_ID")
-	repoOwner := os.Getenv("CI_BUILDER_REPO_OWNER")
-	repoName := os.Getenv("CI_BUILDER_REPO_NAME")
-	commitSHA := os.Getenv("CI_BUILDER_COMMIT_SHA")
-	cmdStr := os.Getenv("CI_BUILDER_CMD")
-	cacheIDStr := os.Getenv("CI_BUILDER_CACHE_ID")
-
-	if dataDir == "" || buildIDStr == "" || repoOwner == "" || repoName == "" ||
-		commitSHA == "" || cmdStr == "" {
-		return errors.New("missing required environment variables for builder")
+func RunBuilder() error {
+	paramsJSON := os.Getenv("CI_BUILDER_PARAMS")
+	if paramsJSON == "" {
+		return errors.New("missing CI_BUILDER_PARAMS for builder")
 	}
 
-	buildID, err := strconv.ParseUint(buildIDStr, 10, 64)
-	if err != nil {
-		return fmt.Errorf("failed to parse build ID '%s': %w", buildIDStr, err)
-	}
-
-	var cacheID *uint64
-	if cacheIDStr != "" {
-		parsedCacheID, err := strconv.ParseUint(cacheIDStr, 10, 64)
-		if err != nil {
-			return fmt.Errorf("failed to parse cache ID '%s': %w", cacheIDStr, err)
-		}
-		cacheID = &parsedCacheID
-	}
-
-	var cmd []string
-	if err := json.Unmarshal([]byte(cmdStr), &cmd); err != nil {
-		return fmt.Errorf("failed to unmarshal command JSON '%s': %w", cmdStr, err)
-	}
-	if len(cmd) == 0 {
-		return errors.New("empty command for builder")
+	var params BuilderParams
+	if err := json.Unmarshal([]byte(paramsJSON), &params); err != nil {
+		return fmt.Errorf("failed to unmarshal build params JSON '%s': %w", paramsJSON, err)
 	}
 
 	// Run the build
-	exitCode, err := build(dataDir, buildID, repoOwner, repoName, commitSHA, cmd, cacheID)
+	exitCode, err := build(params)
 	if err != nil {
 		return fmt.Errorf("builder failed: %w", err)
 	}
 
 	// Write exit code to file
-	exitCodeFile := getExitCodeFile(dataDir, buildID)
+	exitCodeFile := getExitCodeFile(params.DataDir, params.BuildID)
 	if err := os.WriteFile(exitCodeFile, []byte(strconv.Itoa(exitCode)), 0o644); err != nil {
 		return fmt.Errorf("failed to write exit code to file '%s': %w", exitCodeFile, err)
 	}
@@ -116,9 +84,9 @@ func RunBuilderFromEnv() error {
 	return nil
 }
 
-// isBuilderRunning checks if a builder process is still running.
-// The process is identified using PID and BUILD_ID in env. This
-// is to protect against PID reuse.
+// isBuilderRunning checks if a builder process is still running. The process is
+// identified using PID and build ID in env. This is to protect against PID
+// reuse.
 func isBuilderRunning(pid int, buildID uint64) bool {
 	// Check if the process is running
 	process, err := os.FindProcess(pid)
@@ -148,19 +116,11 @@ func isBuilderRunning(pid int, buildID uint64) bool {
 	return true
 }
 
-func build(
-	dataDir string,
-	buildID uint64,
-	repoOwner string,
-	repoName string,
-	commitSHA string,
-	cmd []string,
-	cacheID *uint64,
-) (int, error) {
-	buildDir := getBuildDir(dataDir, buildID)
+func build(p BuilderParams) (int, error) {
+	buildDir := getBuildDir(p.DataDir, p.BuildID)
 
-	if cacheID != nil {
-		cacheDir := getCacheDir(dataDir, repoOwner, repoName, *cacheID)
+	if p.CacheID != nil {
+		cacheDir := getCacheDir(p.DataDir, p.RepoOwner, p.RepoName, *p.CacheID)
 		if err := os.CopyFS(buildDir, os.DirFS(cacheDir)); err != nil {
 			return 0, fmt.Errorf(
 				"failed to copy repo cache dir '%s' to build dir '%s'",
@@ -169,12 +129,12 @@ func build(
 		}
 	}
 
-	if err := checkout(repoOwner, repoName, commitSHA, buildDir); err != nil {
+	if err := checkout(p.RepoOwner, p.RepoName, p.CommitSHA, buildDir); err != nil {
 		return 0, err
 	}
 
-	logFile := getLogFile(dataDir, buildID)
-	exitCode, err := runBuildCommand(buildDir, cmd, logFile)
+	logFile := getLogFile(p.DataDir, p.BuildID)
+	exitCode, err := runBuildCommand(buildDir, p.Cmd, logFile)
 	if err != nil {
 		return 0, err
 	}
