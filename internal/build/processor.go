@@ -3,8 +3,6 @@ package build
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"log/slog"
 	"os"
 	"path"
@@ -16,8 +14,9 @@ import (
 )
 
 type Processor struct {
-	Builds BuildProcessingStore
-	Cfg    *config.Config
+	Builds   BuildProcessingStore
+	Builders DataDir // BuilderStore
+	Cfg      *config.Config
 }
 
 const dispatchPollPeriod = 500 * time.Millisecond
@@ -40,6 +39,10 @@ type BuildProcessingStore interface {
 	MarkBuildFinished(ctx context.Context, buildID uint64, finished time.Time, result store.BuildResult) error
 }
 
+type BuilderStore interface {
+	ListBuildIDs() ([]uint64, error)
+}
+
 type Builder struct {
 	PID       int     `json:"pid"`
 	BuildID   uint64  `json:"build_id"`
@@ -51,39 +54,26 @@ type Builder struct {
 
 func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 	// TODO: add more context to log statements
+	// TODO: ensure all errors are handled
 
 	// Handle finished builds
 	var runningBuilders []Builder
 	reposWithFinishedBuilds := make(map[string]struct{})
 
-	previousRunningBuilds, err := readBuildIDs(p.Cfg.DataDir)
+	previousRunningBuilds, err := p.Builders.ListBuilders()
 	if err != nil {
-		log.ErrorContext(ctx, "failed to read IDs from build dir", slog.Any("error", err))
+		log.ErrorContext(ctx, "error while reading previous builds", slog.Any("error", err))
 		return
 	}
 
-	for _, buildID := range previousRunningBuilds {
-		builderFile := getBuilderFile(p.Cfg.DataDir, buildID)
-
-		data, err := os.ReadFile(builderFile)
-		if err != nil {
-			log.ErrorContext(ctx, "failed to read builder file", slog.Any("error", err))
-			continue
-		}
-
-		var builder Builder
-		if err := json.Unmarshal(data, &builder); err != nil {
-			log.ErrorContext(ctx, "failed to unmarshal builder file", slog.Any("error", err))
-			continue
-		}
-
+	for _, builder := range previousRunningBuilds {
 		if isBuilderRunning(builder.PID, builder.BuildID) {
 			runningBuilders = append(runningBuilders, builder)
 			continue
 		}
 
 		// Update build state
-		exitCode, err := readExitCodeFile(p.Cfg.DataDir, builder.BuildID)
+		exitCode, err := p.Builders.GetExitCode(builder.BuildID)
 		var result store.BuildResult
 		if err != nil {
 			result = store.BuildResultError
@@ -97,28 +87,8 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 
 		// If default branch, move files to cache, delete otherwise
 		// TODO: add config entry for default branch
-		if builder.Ref == "refs/heads/main" || builder.Ref == "refs/heads/master" {
-			cacheRootDir := getCacheRootDir(p.Cfg.DataDir, builder.RepoOwner, builder.RepoName)
-			err := os.MkdirAll(cacheRootDir, defaultPerms)
-			if err != nil {
-				log.ErrorContext(ctx, "failed to create cache dir for repo", slog.Any("error", err))
-			}
-
-			cacheDir := getCacheDir(p.Cfg.DataDir, builder.RepoOwner, builder.RepoName, buildID)
-			buildFilesDir := getBuildFilesDir(p.Cfg.DataDir, buildID)
-			err = os.Rename(buildFilesDir, cacheDir)
-			if err != nil {
-				log.ErrorContext(ctx, "failed to move build files to cache", slog.Any("error", err))
-			}
-
-			reposWithFinishedBuilds[fmt.Sprintf("%s/%s", builder.RepoOwner, builder.RepoName)] = struct{}{}
-		}
-
-		// Delete build dir
-		buildDir := getBuildDir(p.Cfg.DataDir, builder.BuildID)
-		if err := os.RemoveAll(buildDir); err != nil {
-			log.ErrorContext(ctx, "failed to delete build dir", slog.Any("error", err))
-		}
+		cacheBuildFiles := builder.Ref == "refs/heads/main" || builder.Ref == "refs/heads/master"
+		p.Builders.RemoveBuilder(&builder, cacheBuildFiles)
 	}
 
 	// Start new builds
@@ -134,7 +104,11 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 		// TODO: limit builds by number or resource usage
 		repoConfig := p.Cfg.GetRepoConfig(bld.Owner, bld.Name)
 		if repoConfig == nil {
-			log.ErrorContext(ctx, "missing build config", slog.String("owner", bld.Owner), slog.String("repo", bld.Name))
+			log.ErrorContext(
+				ctx, "missing build config",
+				slog.String("owner", bld.Owner),
+				slog.String("repo", bld.Name),
+			)
 			continue
 		}
 
@@ -144,11 +118,11 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 		// Determine build dirs and files
 		buildDir := path.Join(p.Cfg.DataDir, "build", strconv.FormatUint(bld.ID, 10))
 
-		if err := os.MkdirAll(buildDir, defaultPerms); err != nil {
+		if err := os.MkdirAll(buildDir, 0o700); err != nil {
 			log.ErrorContext(ctx, "failed to create build dir", slog.Any("error", err))
 			continue
 		}
-		cacheID, err := getLatestCache(p.Cfg.DataDir, bld.RepoMeta.Owner, bld.RepoMeta.Name)
+		cacheID, err := p.Builders.GetLatestCache(bld.RepoMeta.Owner, bld.RepoMeta.Name)
 		if err != nil {
 			log.ErrorContext(ctx, "failed to get cache dir", slog.Any("error", err))
 			continue
@@ -238,75 +212,4 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 			}
 		}
 	}
-}
-
-func readBuildIDs(dataDir string) ([]uint64, error) {
-	return readDirIDs(getBuildRoot(dataDir))
-}
-
-func readDirIDs(dir string) ([]uint64, error) {
-	entries, err := os.ReadDir(dir)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	} else if err != nil {
-		return nil, err
-	}
-
-	var ids []uint64
-	for _, entry := range entries {
-		id, err := strconv.ParseUint(entry.Name(), 10, 64)
-		if err != nil {
-			continue
-		}
-
-		ids = append(ids, id)
-	}
-
-	return ids, nil
-}
-
-func readExitCodeFile(dataDir string, buildID uint64) (int, error) {
-	data, err := os.ReadFile(getExitCodeFile(dataDir, buildID))
-	if err != nil {
-		return 0, err
-	}
-
-	exitCode, err := strconv.ParseUint(string(data), 10, 64)
-	if err != nil {
-		return 0, err
-	}
-
-	return int(exitCode), nil
-}
-
-const defaultPerms = 0700
-
-func getLatestCache(dataDir string, repoOwner, repoName string) (*uint64, error) {
-	// List all directories in cacheRootDir and find the one with the highest build ID
-	entries, err := os.ReadDir(getCacheRootDir(dataDir, repoOwner, repoName))
-	if os.IsNotExist(err) {
-		// No cache dir exists yet
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to read cache root dir: %w", err)
-	}
-
-	var latestBuildID *uint64
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		buildID, err := strconv.ParseUint(entry.Name(), 10, 64)
-		if err == nil {
-			if latestBuildID == nil {
-				latestBuildID = &buildID
-			} else if buildID > *latestBuildID {
-				latestBuildID = &buildID
-			}
-		}
-	}
-
-	return latestBuildID, nil
 }
