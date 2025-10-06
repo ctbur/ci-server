@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"slices"
@@ -31,8 +32,6 @@ type BuilderParams struct {
 // Create a new builder process by starting the same executable as the current
 // process, but with the "builder" argument.
 func startBuilder(params BuilderParams) (int, error) {
-	// TODO: point to log file for builder itself
-
 	exe, err := os.Executable()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get executable path: %w", err)
@@ -51,6 +50,17 @@ func startBuilder(params BuilderParams) (int, error) {
 
 	builderCmd := exec.Command(exe, "builder")
 	builderCmd.Env = append(os.Environ(), env...)
+
+	// Keep builder running independently of server
+	builderCmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
+
+	logFile := getBuilderLogFile(params.DataDir, params.BuildID)
+	outFile, _ := os.OpenFile(logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o644)
+	builderCmd.Stdout = outFile
+	builderCmd.Stderr = outFile
+
 	if err := builderCmd.Start(); err != nil {
 		return 0, fmt.Errorf("failed to start builder process: %w", err)
 	}
@@ -70,6 +80,7 @@ func RunBuilder() error {
 	}
 
 	// Run the build
+	slog.Info("Starting build...", slog.Any("command", params.Cmd))
 	exitCode, err := build(params)
 	if err != nil {
 		return fmt.Errorf("builder failed: %w", err)
@@ -80,6 +91,7 @@ func RunBuilder() error {
 	if err := os.WriteFile(exitCodeFile, []byte(strconv.Itoa(exitCode)), 0o644); err != nil {
 		return fmt.Errorf("failed to write exit code to file '%s': %w", exitCodeFile, err)
 	}
+	slog.Info("Wrote exit code to file", slog.Int("exit_code", exitCode))
 
 	return nil
 }
@@ -109,7 +121,7 @@ func isBuilderRunning(pid int, buildID uint64) bool {
 
 	envVars := strings.Split(string(data), "\000")
 	buildEnvVar := fmt.Sprintf("CI_BUILDER_BUILD_ID=%d", buildID)
-	if slices.Contains(envVars, buildEnvVar) {
+	if !slices.Contains(envVars, buildEnvVar) {
 		return false
 	}
 
@@ -118,6 +130,10 @@ func isBuilderRunning(pid int, buildID uint64) bool {
 
 func build(p BuilderParams) (int, error) {
 	buildDir := getBuildDir(p.DataDir, p.BuildID)
+
+	if err := os.Mkdir(buildDir, 0o700); err != nil {
+		return 0, fmt.Errorf("failed to create build dir: %w", err)
+	}
 
 	if p.CacheID != nil {
 		cacheDir := getBuildDir(p.DataDir, *p.CacheID)
@@ -175,12 +191,6 @@ func runBuildCommand(
 ) (int, error) {
 	buildCmd := exec.Command(cmd[0], cmd[1:]...)
 	buildCmd.Dir = dir
-
-	if err := buildCmd.Start(); err != nil {
-		if _, ok := err.(*exec.ExitError); !ok {
-			return 0, fmt.Errorf("failed to start build command: %w", err)
-		}
-	}
 
 	logChan := make(chan store.LogEntry, 100)
 	errChan := make(chan error, 3)
@@ -241,7 +251,13 @@ func runBuildCommand(
 		}
 	}()
 
-	// Wait for the command to finish
+	// Run and wait for the command
+	if err := buildCmd.Start(); err != nil {
+		if _, ok := err.(*exec.ExitError); !ok {
+			return 0, fmt.Errorf("failed to start build command: %w", err)
+		}
+	}
+
 	errs := []error{}
 	if err := buildCmd.Wait(); err != nil && err.(*exec.ExitError) == nil {
 		errs = append(errs, fmt.Errorf("failed to execute build command: %w", err))

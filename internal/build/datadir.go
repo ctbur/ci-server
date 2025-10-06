@@ -50,11 +50,11 @@ func (d *DataDir) ReadAndCleanExitCode(buildID uint64) (int, error) {
 	return int(exitCode), nil
 }
 
-func (d *DataDir) RetainBuildDirs(retainedIDs []uint64) error {
+func (d *DataDir) RetainBuildDirs(retainedIDs []uint64) ([]uint64, error) {
 	buildRootDir := path.Join(d.RootDir, "build")
 	entries, err := os.ReadDir(buildRootDir)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var existingIDs []uint64
@@ -68,6 +68,7 @@ func (d *DataDir) RetainBuildDirs(retainedIDs []uint64) error {
 	}
 
 	var errs []error
+	var deletedIDs []uint64
 	for _, id := range existingIDs {
 		// delete if not in use
 		if slices.Contains(retainedIDs, id) {
@@ -78,18 +79,41 @@ func (d *DataDir) RetainBuildDirs(retainedIDs []uint64) error {
 		err := os.RemoveAll(buildDir)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("failed to delete cache dir: %w", err))
+			continue
 		}
+
+		deletedIDs = append(deletedIDs, id)
 	}
 
-	return errors.Join(errs...)
+	return deletedIDs, errors.Join(errs...)
+}
+
+func (d *DataDir) CreateRootDirs() error {
+	if err := os.MkdirAll(path.Join(d.RootDir, "build-logs"), 0o700); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(path.Join(d.RootDir, "builder-logs"), 0o700); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(path.Join(d.RootDir, "exit-code"), 0o700); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(path.Join(d.RootDir, "build"), 0o700); err != nil {
+		return err
+	}
+	return nil
 }
 
 func getLogFile(dataDir string, buildID uint64) string {
-	return path.Join(dataDir, "logs", fmt.Sprintf("%d.jsonl", buildID))
+	return path.Join(dataDir, "build-logs", fmt.Sprintf("%d.jsonl", buildID))
+}
+
+func getBuilderLogFile(dataDir string, buildID uint64) string {
+	return path.Join(dataDir, "builder-logs", fmt.Sprintf("%d.txt", buildID))
 }
 
 func getExitCodeFile(dataDir string, buildID uint64) string {
-	return path.Join(dataDir, "exit_code", strconv.FormatUint(buildID, 10))
+	return path.Join(dataDir, "exit-code", strconv.FormatUint(buildID, 10))
 }
 
 func getBuildDir(dataDir string, buildID uint64) string {

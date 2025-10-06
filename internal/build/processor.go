@@ -3,9 +3,6 @@ package build
 import (
 	"context"
 	"log/slog"
-	"os"
-	"path"
-	"strconv"
 	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/config"
@@ -51,7 +48,7 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 	// Handle finished builds
 	runningBuilds, err := p.Builds.ListBuilders(ctx)
 	if err != nil {
-		log.ErrorContext(ctx, "error while getting running builds", slog.Any("error", err))
+		log.ErrorContext(ctx, "failed to get running builds", slog.Any("error", err))
 		return
 	}
 
@@ -65,6 +62,11 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 		var result store.BuildResult
 		if err != nil {
 			result = store.BuildResultError
+			log.InfoContext(
+				ctx, "Builder error",
+				slog.Uint64("build_id", builder.BuildID),
+				slog.Any("error", err),
+			)
 		} else if exitCode != 0 {
 			result = store.BuildResultFailed
 		} else {
@@ -76,8 +78,17 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 		cacheBuildFiles := builder.Ref == "refs/heads/main" || builder.Ref == "refs/heads/master"
 		err = p.Builds.MarkBuildFinished(ctx, builder.BuildID, time.Now(), result, cacheBuildFiles)
 		if err != nil {
-			log.InfoContext(ctx, "error finishing build", slog.Any("error", err))
+			log.InfoContext(ctx, "failed to finish build", slog.Any("error", err))
+			continue
 		}
+
+		log.InfoContext(
+			ctx, "Finished build",
+			slog.Uint64("build_id", builder.BuildID),
+			slog.Any("cache_id", builder.CacheID),
+			slog.Bool("made_cache", cacheBuildFiles),
+			slog.Any("result", result),
+		)
 	}
 
 	// Start new builds
@@ -101,14 +112,6 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 			continue
 		}
 
-		// Determine build dirs and files
-		buildDir := path.Join(p.Cfg.DataDir, "build", strconv.FormatUint(bld.ID, 10))
-
-		if err := os.MkdirAll(buildDir, 0o700); err != nil {
-			log.ErrorContext(ctx, "failed to create build dir", slog.Any("error", err))
-			continue
-		}
-
 		pid, err := startBuilder(
 			BuilderParams{
 				DataDir:   p.Cfg.DataDir,
@@ -127,9 +130,25 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 
 		// Update start time for build
 		p.Builds.MarkBuildStarted(ctx, bld.ID, time.Now(), pid, bld.CacheID)
+
+		log.InfoContext(
+			ctx, "Started build",
+			slog.Uint64("build_id", bld.ID),
+			slog.Any("cache_id", bld.CacheID),
+			slog.Int("pid", pid),
+		)
 	}
 
 	// Clean up unused build dirs
 	buildDirsInUse, err := p.Builds.ListBuildDirsInUse(ctx)
-	p.Dir.RetainBuildDirs(buildDirsInUse)
+	if err != nil {
+		log.ErrorContext(ctx, "Failed to list build dirs in use", slog.Any("error", err))
+		return
+	}
+
+	deletedIDs, err := p.Dir.RetainBuildDirs(buildDirsInUse)
+	if err != nil {
+		log.ErrorContext(ctx, "Failed to delete unused build dirs", slog.Any("error", err))
+	}
+	log.InfoContext(ctx, "Deleted unused build dirs", slog.Any("build_ids", deletedIDs))
 }

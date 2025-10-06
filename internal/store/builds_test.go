@@ -195,5 +195,10 @@ func TestBuildStore(t *testing.T) {
 		// Check cache ID in order of build ID
 		assert.Equal(t, *builders[0].CacheID, 1, "Incorrect cache ID")
 		assert.Equal(t, builders[1].CacheID, nil, "Incorrect cache ID")
+
+		// Get list of build dirs to retain
+		buildIDs, err := s.ListBuildDirsInUse(ctx)
+		assert.NoError(t, err, "Failed to list build dirs in use")
+		assert.DeepEqual(t, buildIDs, []uint64{1, 2, 4}, "Incorrect build dirs in use")
 	})
 }

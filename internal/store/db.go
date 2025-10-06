@@ -9,17 +9,16 @@ import (
 	"sort"
 
 	"github.com/ctbur/ci-server/v2/internal/config"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func DropAllData(ctx context.Context, conn *pgx.Conn) error {
-	_, err := conn.Exec(ctx, "DROP SCHEMA public CASCADE;")
+func DropAllData(ctx context.Context, pool *pgxpool.Pool) error {
+	_, err := pool.Exec(ctx, "DROP SCHEMA public CASCADE;")
 	if err != nil {
 		return fmt.Errorf("failed to drop schema: %v\n", err)
 	}
 
-	_, err = conn.Exec(ctx, "CREATE SCHEMA public;")
+	_, err = pool.Exec(ctx, "CREATE SCHEMA public;")
 	if err != nil {
 		return fmt.Errorf("failed to create schema: %v\n", err)
 	}

@@ -20,7 +20,7 @@ import (
 
 func main() {
 	var err error
-	if len(os.Args) > 2 && os.Args[1] == "builder" {
+	if len(os.Args) >= 2 && os.Args[1] == "builder" {
 		err = build.RunBuilder()
 	} else {
 		err = runServer()
@@ -30,6 +30,7 @@ func main() {
 		slog.Error("Fatal error", slog.Any("error", err))
 		os.Exit(1)
 	}
+	slog.Info("Exited successfully")
 	os.Exit(0)
 }
 
@@ -59,7 +60,7 @@ func runServer() error {
 	}
 	defer pool.Close()
 
-	// store.DropAllData(ctx, conn)
+	// store.DropAllData(ctx, pool)
 	err = store.ApplyMigrations(slog.Default(), ctx, pool, "./migrations")
 	if err != nil {
 		return err
@@ -90,14 +91,22 @@ func runServer() error {
 	pgStore := store.NewPGStore(pool)
 	store.InitDatabase(ctx, &pgStore, cfg)
 
+	dataDir := build.DataDir{
+		RootDir: cfg.DataDir,
+	}
+	if err := dataDir.CreateRootDirs(); err != nil {
+		return fmt.Errorf("Failed to create dirs under %s: %w", cfg.DataDir, err)
+	}
+
 	processor := build.Processor{
 		Builds: pgStore,
+		Dir:    dataDir,
 		Cfg:    cfg,
 	}
 	go processor.Run(slog.Default(), ctx)
 
 	logStore := store.LogStore{
-		LogDir: path.Join(cfg.DataDir, "logs"),
+		LogDir: path.Join(cfg.DataDir, "build-logs"),
 	}
 	handler := web.Handler(cfg, userAuth, pgStore, logStore, tmpl, "ui/static/")
 	web.RunServer(slog.Default(), handler, 8000)

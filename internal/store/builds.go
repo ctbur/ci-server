@@ -431,11 +431,12 @@ func (s PGStore) ListBuildDirsInUse(ctx context.Context) ([]uint64, error) {
 	rows, err := s.pool.Query(
 		ctx,
 		// Keep build dirs, cache dirs in use, and repo cache dir
-		`(SELECT build_id FROM builder)
+		`(SELECT build_id FROM builders)
 		UNION
-		(SELECT cache_id FROM builder)
+		(SELECT cache_id FROM builders WHERE cache_id IS NOT NULL)
 		UNION
-		(SELECT r.cache_id FROM repo AS r WHERE r.cache_id IS NOT NULL)`,
+		(SELECT cache_id FROM repos WHERE cache_id IS NOT NULL)
+		ORDER BY 1`,
 	)
 	if err != nil {
 		return nil, err
