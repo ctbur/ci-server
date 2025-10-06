@@ -5,6 +5,7 @@ CREATE TABLE repos (
     name VARCHAR(255) NOT NULL,
 
     build_counter BIGINT NOT NULL DEFAULT 0,
+    cache_id BIGINT DEFAULT NULL,
 
     UNIQUE (owner, name)
 );

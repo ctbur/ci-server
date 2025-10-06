@@ -104,7 +104,7 @@ func InitDatabase(ctx context.Context, pgStore *PGStore, cfg *config.Config) err
 	for _, repoCfg := range cfg.Repos {
 		err := pgStore.CreateRepoIfNotExists(
 			ctx,
-			RepoMeta{
+			Repo{
 				Owner: repoCfg.Owner,
 				Name:  repoCfg.Name,
 			},

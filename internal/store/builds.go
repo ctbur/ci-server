@@ -9,22 +9,12 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-type RepoMeta struct {
+type Repo struct {
 	Owner string
 	Name  string
 }
 
-type RepoState struct {
-	BuildCounter uint64
-}
-
-type Repo struct {
-	ID uint64
-	RepoMeta
-	RepoState
-}
-
-func (s PGStore) CreateRepoIfNotExists(ctx context.Context, repo RepoMeta) error {
+func (s PGStore) CreateRepoIfNotExists(ctx context.Context, repo Repo) error {
 	_, err := s.pool.Exec(
 		ctx,
 		`INSERT INTO repos (owner, name)
@@ -150,8 +140,20 @@ func (s PGStore) CreateBuild(
 	return newID, err
 }
 
-func (s PGStore) MarkBuildStarted(ctx context.Context, buildID uint64, started time.Time) error {
-	_, err := s.pool.Exec(
+func (s PGStore) MarkBuildStarted(
+	ctx context.Context,
+	buildID uint64,
+	started time.Time,
+	pid int,
+	cacheID *uint64,
+) error {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = tx.Exec(
 		ctx,
 		`UPDATE builds
 		SET started = $1
@@ -159,13 +161,38 @@ func (s PGStore) MarkBuildStarted(ctx context.Context, buildID uint64, started t
 		started,
 		buildID,
 	)
+	if err != nil {
+		return fmt.Errorf("failed to update build: %w", err)
+	}
+
+	_, err = tx.Exec(
+		ctx,
+		`INSERT INTO builders (build_id, pid, cache_id)
+		VALUES ($1, $2, $3)`,
+		buildID, pid, cacheID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update builders: %w", err)
+	}
 
 	// TODO: return error if no rows were affected (build not found)
-	return err
+	return tx.Commit(ctx)
 }
 
-func (s PGStore) MarkBuildFinished(ctx context.Context, buildID uint64, finished time.Time, result BuildResult) error {
-	_, err := s.pool.Exec(
+func (s PGStore) MarkBuildFinished(
+	ctx context.Context,
+	buildID uint64,
+	finished time.Time,
+	result BuildResult,
+	cacheBuildFiles bool,
+) error {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = tx.Exec(
 		ctx,
 		`UPDATE builds
 		SET finished = $1, result = $2
@@ -174,20 +201,52 @@ func (s PGStore) MarkBuildFinished(ctx context.Context, buildID uint64, finished
 		result,
 		buildID,
 	)
+	if err != nil {
+		return fmt.Errorf("failed to update build: %w", err)
+	}
+
+	if cacheBuildFiles {
+		_, err = tx.Exec(
+			ctx,
+			`UPDATE repos
+			SET cache_id = $1
+			WHERE
+				id = (
+					SELECT repo_id
+					FROM builds
+					WHERE id = $1
+				)
+				AND
+				(cache_id IS NULL OR cache_id < $1)`,
+			buildID,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to update repo: %w", err)
+		}
+	}
+
+	_, err = tx.Exec(
+		ctx,
+		`DELETE FROM builders WHERE build_id = $1`,
+		buildID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update builders: %w", err)
+	}
 
 	// TODO: return error if no rows were affected (build not found)
-	return err
+	return tx.Commit(ctx)
 }
 
-type BuildWithRepoMeta struct {
+type BuildWithRepo struct {
 	Build
-	RepoMeta
+	Repo
 }
 
 var ErrNoBuild error = errors.New("build does not exist")
 
-func (s PGStore) GetBuild(ctx context.Context, buildID uint64) (*BuildWithRepoMeta, error) {
-	var b BuildWithRepoMeta
+func (s PGStore) GetBuild(ctx context.Context, buildID uint64) (*BuildWithRepo, error) {
+	var b BuildWithRepo
 
 	err := s.pool.QueryRow(
 		ctx,
@@ -223,8 +282,8 @@ func (s PGStore) GetBuild(ctx context.Context, buildID uint64) (*BuildWithRepoMe
 		&b.Build.Started,
 		&b.Build.Finished,
 		&b.Build.Result,
-		&b.RepoMeta.Owner,
-		&b.RepoMeta.Name,
+		&b.Repo.Owner,
+		&b.Repo.Name,
 	)
 
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -234,7 +293,7 @@ func (s PGStore) GetBuild(ctx context.Context, buildID uint64) (*BuildWithRepoMe
 	return &b, err
 }
 
-func (s PGStore) ListBuilds(ctx context.Context) ([]BuildWithRepoMeta, error) {
+func (s PGStore) ListBuilds(ctx context.Context) ([]BuildWithRepo, error) {
 	rows, err := s.pool.Query(
 		ctx,
 		`SELECT
@@ -261,8 +320,8 @@ func (s PGStore) ListBuilds(ctx context.Context) ([]BuildWithRepoMeta, error) {
 	}
 	defer rows.Close()
 
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (BuildWithRepoMeta, error) {
-		var b BuildWithRepoMeta
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (BuildWithRepo, error) {
+		var b BuildWithRepo
 		err := rows.Scan(
 			&b.Build.ID,
 			&b.Build.RepoID,
@@ -276,33 +335,33 @@ func (s PGStore) ListBuilds(ctx context.Context) ([]BuildWithRepoMeta, error) {
 			&b.Build.Started,
 			&b.Build.Finished,
 			&b.Build.Result,
-			&b.RepoMeta.Owner,
-			&b.RepoMeta.Name,
+			&b.Repo.Owner,
+			&b.Repo.Name,
 		)
 		return b, err
 	})
 }
 
-func (s PGStore) GetPendingBuilds(ctx context.Context) ([]BuildWithRepoMeta, error) {
+type PendingBuild struct {
+	ID        uint64
+	CacheID   *uint64
+	Repo      Repo
+	CommitSHA string
+}
+
+func (s PGStore) GetPendingBuilds(ctx context.Context) ([]PendingBuild, error) {
 	rows, err := s.pool.Query(
 		ctx,
 		`SELECT
 			b.id,
-			b.repo_id,
-			b.number,
-			b.link,
-			b.ref,
 			b.commit_sha,
-			b.message,
-			b.author,
-			b.created,
 			r.owner,
-			r.name
+			r.name,
+			r.cache_id
 		FROM builds AS b
 		INNER JOIN repos AS r ON b.repo_id = r.id
 		WHERE b.started IS NULL AND b.finished IS NULL AND b.result IS NULL
-		ORDER BY id ASC
-		LIMIT 10`,
+		ORDER BY id ASC`,
 	)
 	if err != nil {
 		return nil, err
@@ -311,26 +370,88 @@ func (s PGStore) GetPendingBuilds(ctx context.Context) ([]BuildWithRepoMeta, err
 
 	return pgx.CollectRows(
 		rows,
-		func(row pgx.CollectableRow) (BuildWithRepoMeta, error) {
-			b := BuildWithRepoMeta{}
+		func(row pgx.CollectableRow) (PendingBuild, error) {
+			b := PendingBuild{}
 			err := row.Scan(
-				&b.Build.ID,
-				&b.Build.RepoID,
-				&b.Build.Number,
-				&b.Build.Link,
-				&b.Build.Ref,
-				&b.Build.CommitSHA,
-				&b.Build.Message,
-				&b.Build.Author,
-				&b.Build.Created,
-				&b.RepoMeta.Owner,
-				&b.RepoMeta.Name,
+				&b.ID,
+				&b.CommitSHA,
+				&b.Repo.Owner,
+				&b.Repo.Name,
+				&b.CacheID,
 			)
 			return b, err
 		})
 }
 
+type Builder struct {
+	PID     int
+	BuildID uint64
+	Repo    Repo
+	Ref     string
+	CacheID *uint64
+}
+
+func (s PGStore) ListBuilders(ctx context.Context) ([]Builder, error) {
+	rows, err := s.pool.Query(
+		ctx,
+		`SELECT
+			br.pid,
+			b.id,
+			r.owner,
+			r.name,
+			b.ref,
+			br.cache_id
+		FROM builders AS br
+		INNER JOIN builds AS b ON br.build_id = b.id
+		INNER JOIN repos AS r ON b.repo_id = r.id
+		ORDER BY id ASC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return pgx.CollectRows(
+		rows,
+		func(row pgx.CollectableRow) (Builder, error) {
+			b := Builder{}
+			err := row.Scan(
+				&b.PID,
+				&b.BuildID,
+				&b.Repo.Owner,
+				&b.Repo.Name,
+				&b.Ref,
+				&b.CacheID,
+			)
+			return b, err
+		})
+}
+
+func (s PGStore) ListBuildDirsInUse(ctx context.Context) ([]uint64, error) {
+	rows, err := s.pool.Query(
+		ctx,
+		// Keep build dirs, cache dirs in use, and repo cache dir
+		`(SELECT build_id FROM builder)
+		UNION
+		(SELECT cache_id FROM builder)
+		UNION
+		(SELECT r.cache_id FROM repo AS r WHERE r.cache_id IS NOT NULL)`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return pgx.CollectRows(
+		rows,
+		func(row pgx.CollectableRow) (uint64, error) {
+			var id uint64
+			err := row.Scan(&id)
+			return id, err
+		})
+}
+
 func (s PGStore) TruncateAll(ctx context.Context) error {
-	_, err := s.pool.Exec(ctx, `TRUNCATE TABLE builds, repos RESTART IDENTITY CASCADE`)
+	_, err := s.pool.Exec(ctx, `TRUNCATE TABLE builds, repos, builders RESTART IDENTITY CASCADE`)
 	return err
 }

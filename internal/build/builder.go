@@ -21,11 +21,11 @@ import (
 type BuilderParams struct {
 	DataDir   string   `json:"data_dir"`
 	BuildID   uint64   `json:"build_id"`
+	CacheID   *uint64  `json:"cache_id"`
 	RepoOwner string   `json:"repo_owner"`
 	RepoName  string   `json:"repo_name"`
 	CommitSHA string   `json:"commit_sha"`
 	Cmd       []string `json:"cmd"`
-	CacheID   *uint64  `json:"cache_id"`
 }
 
 // Create a new builder process by starting the same executable as the current
@@ -120,7 +120,7 @@ func build(p BuilderParams) (int, error) {
 	buildDir := getBuildDir(p.DataDir, p.BuildID)
 
 	if p.CacheID != nil {
-		cacheDir := getCacheDir(p.DataDir, p.RepoOwner, p.RepoName, *p.CacheID)
+		cacheDir := getBuildDir(p.DataDir, *p.CacheID)
 		if err := os.CopyFS(buildDir, os.DirFS(cacheDir)); err != nil {
 			return 0, fmt.Errorf(
 				"failed to copy repo cache dir '%s' to build dir '%s'",
