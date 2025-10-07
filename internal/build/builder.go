@@ -26,6 +26,7 @@ type BuilderParams struct {
 	RepoOwner     string            `json:"repo_owner"`
 	RepoName      string            `json:"repo_name"`
 	CommitSHA     string            `json:"commit_sha"`
+	EnvVars       string            `json:"env_vars"`
 	BuildCmd      []string          `json:"build_cmd"`
 	BuildSecrets  map[string]string `json:"build_secrets"`
 	DeployCmd     []string          `json:"deploy_cmd"`

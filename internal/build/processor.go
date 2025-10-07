@@ -128,6 +128,7 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 			RepoOwner:    bld.Repo.Owner,
 			RepoName:     bld.Repo.Name,
 			CommitSHA:    bld.CommitSHA,
+			EnvVars:      repoConfig.EnvVars,
 			BuildCmd:     repoConfig.BuildCommand,
 			BuildSecrets: repoConfig.BuildSecrets,
 		}
