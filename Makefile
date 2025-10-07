@@ -1,6 +1,6 @@
 .PHONY: build dev
 
-export GOMODCACHE ?= $(shell pwd)/go
+export GOPATH ?= $(shell pwd)/go
 
 test:
 	go test ./...
