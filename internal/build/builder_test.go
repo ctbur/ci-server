@@ -24,6 +24,7 @@ func TestRunInBuildContext(t *testing.T) {
 	exitCode, err := runInBuildContext(
 		buildDir,
 		[]string{"echo", "test"},
+		nil,
 		make(map[string]string),
 		logFile,
 	)

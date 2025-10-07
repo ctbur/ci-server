@@ -26,7 +26,7 @@ type BuilderParams struct {
 	RepoOwner     string            `json:"repo_owner"`
 	RepoName      string            `json:"repo_name"`
 	CommitSHA     string            `json:"commit_sha"`
-	EnvVars       string            `json:"env_vars"`
+	EnvVars       []string          `json:"env_vars"`
 	BuildCmd      []string          `json:"build_cmd"`
 	BuildSecrets  map[string]string `json:"build_secrets"`
 	DeployCmd     []string          `json:"deploy_cmd"`
@@ -163,7 +163,7 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 	defer logFile.Close()
 
 	log.Info("Starting build...", slog.Any("command", p.BuildCmd))
-	exitCode, err := runInBuildContext(buildDir, p.BuildCmd, p.BuildSecrets, logFile)
+	exitCode, err := runInBuildContext(buildDir, p.BuildCmd, p.EnvVars, p.BuildSecrets, logFile)
 	if err != nil {
 		return 0, err
 	}
@@ -173,7 +173,7 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 		return exitCode, nil
 	}
 	log.Info("Starting deploy...", slog.Any("command", p.DeployCmd))
-	exitCode, err = runInBuildContext(buildDir, p.DeployCmd, p.DeploySecrets, logFile)
+	exitCode, err = runInBuildContext(buildDir, p.DeployCmd, p.EnvVars, p.DeploySecrets, logFile)
 	if err != nil {
 		return 0, err
 	}
@@ -210,6 +210,7 @@ func checkout(owner, name, commitSHA, targetDir string) error {
 func runInBuildContext(
 	dir string,
 	cmd []string,
+	env []string,
 	secrets map[string]string,
 	logFile *os.File,
 ) (int, error) {
@@ -218,17 +219,20 @@ func runInBuildContext(
 	// Run the command in the build dir
 	buildCmd.Dir = dir
 
-	// Add default env vars and secrets to the environment
-	var env []string
+	// Add secrets to the environment
+	var cmdEnv []string
 	for secret, value := range secrets {
-		env = append(env, fmt.Sprintf("%s=%s", secret, value))
+		cmdEnv = append(cmdEnv, fmt.Sprintf("%s=%s", secret, value))
 	}
-	env = append(env,
+	// Add configured env vars
+	cmdEnv = append(cmdEnv, env...)
+	// Add default env vars
+	cmdEnv = append(cmdEnv,
 		"CI=true",
 		// Pass along PATH variable
 		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
 	)
-	buildCmd.Env = env
+	buildCmd.Env = cmdEnv
 
 	logChan := make(chan store.LogEntry, 100)
 	errChan := make(chan error, 3)
