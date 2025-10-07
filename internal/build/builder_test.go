@@ -7,7 +7,7 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/assert"
 )
 
-func TestRunCmdInBuilder(t *testing.T) {
+func TestRunInBuildContext(t *testing.T) {
 	logFile, err := os.CreateTemp("", "*.jsonl")
 	assert.NoError(t, err, "Failed to create log file")
 	defer func() {
@@ -21,7 +21,7 @@ func TestRunCmdInBuilder(t *testing.T) {
 		_ = os.RemoveAll(buildDir)
 	}()
 
-	exitCode, err := runCmdInBuilder(
+	exitCode, err := runInBuildContext(
 		buildDir,
 		[]string{"echo", "test"},
 		make(map[string]string),

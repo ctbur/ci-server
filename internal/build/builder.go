@@ -161,7 +161,7 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 	defer logFile.Close()
 
 	slog.Info("Starting build...", slog.Any("command", p.BuildCmd))
-	exitCode, err := runCmdInBuilder(buildDir, p.BuildCmd, p.BuildSecrets, logFile)
+	exitCode, err := runInBuildContext(buildDir, p.BuildCmd, p.BuildSecrets, logFile)
 	if err != nil {
 		return 0, err
 	}
@@ -171,7 +171,7 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 		return exitCode, nil
 	}
 	slog.Info("Starting deploy...", slog.Any("command", p.DeployCmd))
-	exitCode, err = runCmdInBuilder(buildDir, p.DeployCmd, p.DeploySecrets, logFile)
+	exitCode, err = runInBuildContext(buildDir, p.DeployCmd, p.DeploySecrets, logFile)
 	if err != nil {
 		return 0, err
 	}
@@ -205,21 +205,26 @@ func checkout(owner, name, commitSHA, targetDir string) error {
 	return nil
 }
 
-func runCmdInBuilder(
+func runInBuildContext(
 	dir string,
 	cmd []string,
 	secrets map[string]string,
 	logFile *os.File,
 ) (int, error) {
 	buildCmd := exec.Command(cmd[0], cmd[1:]...)
+
+	// Run the command in the build dir
 	buildCmd.Dir = dir
 
-	for secret, value := range secrets {
-		envVar := fmt.Sprintf("%s=%s", secret, value)
-		buildCmd.Env = append(buildCmd.Env, envVar)
+	// Add default env vars and secrets to the environment
+	env := []string{
+		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
+		"CI=true",
 	}
-
-	buildCmd.Env = append(buildCmd.Env, "CI=true")
+	for secret, value := range secrets {
+		env = append(env, fmt.Sprintf("%s=%s", secret, value))
+	}
+	buildCmd.Env = env
 
 	logChan := make(chan store.LogEntry, 100)
 	errChan := make(chan error, 3)
