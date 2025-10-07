@@ -26,7 +26,7 @@ type BuilderParams struct {
 	RepoOwner     string            `json:"repo_owner"`
 	RepoName      string            `json:"repo_name"`
 	CommitSHA     string            `json:"commit_sha"`
-	EnvVars       []string          `json:"env_vars"`
+	EnvVars       map[string]string `json:"env_vars"`
 	BuildCmd      []string          `json:"build_cmd"`
 	BuildSecrets  map[string]string `json:"build_secrets"`
 	DeployCmd     []string          `json:"deploy_cmd"`
@@ -210,7 +210,7 @@ func checkout(owner, name, commitSHA, targetDir string) error {
 func runInBuildContext(
 	dir string,
 	cmd []string,
-	env []string,
+	env map[string]string,
 	secrets map[string]string,
 	logFile *os.File,
 ) (int, error) {
@@ -225,7 +225,9 @@ func runInBuildContext(
 		cmdEnv = append(cmdEnv, fmt.Sprintf("%s=%s", secret, value))
 	}
 	// Add configured env vars
-	cmdEnv = append(cmdEnv, env...)
+	for name, value := range env {
+		cmdEnv = append(cmdEnv, fmt.Sprintf("%s=%s", name, value))
+	}
 	// Add default env vars
 	cmdEnv = append(cmdEnv,
 		"CI=true",

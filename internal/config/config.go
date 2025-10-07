@@ -12,11 +12,11 @@ type Config struct {
 }
 
 type RepoConfig struct {
-	Owner         string   `toml:"owner"`
-	Name          string   `toml:"name"`
-	DefaultBranch string   `toml:"default_branch"`
-	EnvVars       []string `toml:"env_vars"`
-	BuildCommand  []string `toml:"build_command"`
+	Owner         string            `toml:"owner"`
+	Name          string            `toml:"name"`
+	DefaultBranch string            `toml:"default_branch"`
+	EnvVars       map[string]string `toml:"env_vars"`
+	BuildCommand  []string          `toml:"build_command"`
 	// Name mapped to "encrypted_build_secrets" - we decrypt it as part of loading the config
 	BuildSecrets  map[string]string `toml:"encrypted_build_secrets"`
 	DeployCommand []string          `toml:"deploy_command"`
