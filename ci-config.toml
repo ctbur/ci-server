@@ -3,6 +3,7 @@ data_dir = "./data/build"
 [[repos]]
 owner = "encode"
 name = "httpx"
+default_branch = "master"
 build_command = [
     "sh",
     "-c",

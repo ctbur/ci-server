@@ -346,6 +346,7 @@ type PendingBuild struct {
 	ID        uint64
 	CacheID   *uint64
 	Repo      Repo
+	Ref       string
 	CommitSHA string
 }
 
@@ -354,6 +355,7 @@ func (s PGStore) GetPendingBuilds(ctx context.Context) ([]PendingBuild, error) {
 		ctx,
 		`SELECT
 			b.id,
+			b.ref,
 			b.commit_sha,
 			r.owner,
 			r.name,
@@ -374,6 +376,7 @@ func (s PGStore) GetPendingBuilds(ctx context.Context) ([]PendingBuild, error) {
 			b := PendingBuild{}
 			err := row.Scan(
 				&b.ID,
+				&b.Ref,
 				&b.CommitSHA,
 				&b.Repo.Owner,
 				&b.Repo.Name,

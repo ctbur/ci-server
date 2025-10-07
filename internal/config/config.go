@@ -12,11 +12,15 @@ type Config struct {
 }
 
 type RepoConfig struct {
-	Owner        string   `toml:"owner"`
-	Name         string   `toml:"name"`
-	BuildCommand []string `toml:"build_command"`
+	Owner         string   `toml:"owner"`
+	Name          string   `toml:"name"`
+	DefaultBranch string   `toml:"default_branch"`
+	BuildCommand  []string `toml:"build_command"`
 	// Name mapped to "encrypted_build_secrets" - we decrypt it as part of loading the config
-	BuildSecrets map[string]string `toml:"encrypted_build_secrets"`
+	BuildSecrets  map[string]string `toml:"encrypted_build_secrets"`
+	DeployCommand []string          `toml:"deploy_command"`
+	// Name mapped to "encrypted_deploy_secrets" - we decrypt it as part of loading the config
+	DeploySecrets map[string]string `toml:"encrypted_deploy_secrets"`
 	// Name mapped to "encrypted_webhook_secret" - we decrypt it as part of loading the config
 	WebhookSecret *string `toml:"encrypted_webhook_secret,omitempty"`
 }
@@ -39,6 +43,18 @@ func Load(secretKey, configFile string) (*Config, error) {
 			}
 
 			cfg.Repos[i].BuildSecrets[secretName] = plaintext
+		}
+
+		for secretName := range cfg.Repos[i].DeploySecrets {
+			plaintext, err := decryptSecret(secretKey, cfg.Repos[i].DeploySecrets[secretName])
+			if err != nil {
+				return nil, fmt.Errorf(
+					"failed to decrypt deploy secret of %s/%s: %w",
+					cfg.Repos[i].Owner, cfg.Repos[i].Name, err,
+				)
+			}
+
+			cfg.Repos[i].DeploySecrets[secretName] = plaintext
 		}
 
 		if cfg.Repos[i].WebhookSecret != nil {

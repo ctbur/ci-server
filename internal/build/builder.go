@@ -20,14 +20,16 @@ import (
 )
 
 type BuilderParams struct {
-	DataDir   string            `json:"data_dir"`
-	BuildID   uint64            `json:"build_id"`
-	CacheID   *uint64           `json:"cache_id"`
-	RepoOwner string            `json:"repo_owner"`
-	RepoName  string            `json:"repo_name"`
-	CommitSHA string            `json:"commit_sha"`
-	Cmd       []string          `json:"cmd"`
-	Secrets   map[string]string `json:"secrets"`
+	DataDir       string            `json:"data_dir"`
+	BuildID       uint64            `json:"build_id"`
+	CacheID       *uint64           `json:"cache_id"`
+	RepoOwner     string            `json:"repo_owner"`
+	RepoName      string            `json:"repo_name"`
+	CommitSHA     string            `json:"commit_sha"`
+	BuildCmd      []string          `json:"build_cmd"`
+	BuildSecrets  map[string]string `json:"build_secrets"`
+	DeployCmd     []string          `json:"deploy_cmd"`
+	DeploySecrets map[string]string `json:"deploy_secrets"`
 }
 
 // Create a new builder process by starting the same executable as the current
@@ -81,8 +83,7 @@ func RunBuilder() error {
 	}
 
 	// Run the build
-	slog.Info("Starting build...", slog.Any("command", params.Cmd))
-	exitCode, err := build(params)
+	exitCode, err := build(*slog.Default(), params)
 	if err != nil {
 		return fmt.Errorf("builder failed: %w", err)
 	}
@@ -129,7 +130,7 @@ func isBuilderRunning(pid int, buildID uint64) bool {
 	return true
 }
 
-func build(p BuilderParams) (int, error) {
+func build(log slog.Logger, p BuilderParams) (int, error) {
 	buildDir := getBuildDir(p.DataDir, p.BuildID)
 
 	if err := os.Mkdir(buildDir, 0o700); err != nil {
@@ -137,6 +138,7 @@ func build(p BuilderParams) (int, error) {
 	}
 
 	if p.CacheID != nil {
+		slog.Info("Copying cache", slog.Uint64("cache_id", *p.CacheID))
 		cacheDir := getBuildDir(p.DataDir, *p.CacheID)
 		if err := os.CopyFS(buildDir, os.DirFS(cacheDir)); err != nil {
 			return 0, fmt.Errorf(
@@ -150,8 +152,20 @@ func build(p BuilderParams) (int, error) {
 		return 0, err
 	}
 
+	// Run build command
 	logFile := getLogFile(p.DataDir, p.BuildID)
-	exitCode, err := runBuildCommand(buildDir, p.Cmd, p.Secrets, logFile)
+	slog.Info("Starting build...", slog.Any("command", p.BuildCmd))
+	exitCode, err := runCmdInBuilder(buildDir, p.BuildCmd, p.BuildSecrets, logFile)
+	if err != nil {
+		return 0, err
+	}
+
+	// Run deploy command - only if it exists and the build command was successful
+	if exitCode != 0 || len(p.DeployCmd) == 0 {
+		return exitCode, nil
+	}
+	slog.Info("Starting deploy...", slog.Any("command", p.DeployCmd))
+	exitCode, err = runCmdInBuilder(buildDir, p.DeployCmd, p.DeploySecrets, logFile)
 	if err != nil {
 		return 0, err
 	}
@@ -185,7 +199,7 @@ func checkout(owner, name, commitSHA, targetDir string) error {
 	return nil
 }
 
-func runBuildCommand(
+func runCmdInBuilder(
 	dir string,
 	cmd []string,
 	secrets map[string]string,

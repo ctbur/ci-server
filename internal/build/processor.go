@@ -2,6 +2,7 @@ package build
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -72,9 +73,18 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 			result = store.BuildResultSuccess
 		}
 
-		// If default branch, move files to cache, delete otherwise
-		// TODO: add config entry for default branch
-		cacheBuildFiles := builder.Ref == "refs/heads/main" || builder.Ref == "refs/heads/master"
+		repoConfig := p.Cfg.GetRepoConfig(builder.Repo.Owner, builder.Repo.Name)
+		cacheBuildFiles := false
+		if repoConfig != nil {
+			// If default branch, move files to cache, delete otherwise
+			cacheBuildFiles = builder.Ref == fmt.Sprintf("refs/heads/%s", repoConfig.DefaultBranch)
+		} else {
+			log.ErrorContext(
+				ctx, "missing build config",
+				slog.String("owner", builder.Repo.Owner),
+				slog.String("repo", builder.Repo.Name),
+			)
+		}
 		err = p.Builds.MarkBuildFinished(ctx, builder.BuildID, time.Now(), result, cacheBuildFiles)
 		if err != nil {
 			log.InfoContext(ctx, "failed to finish build", slog.Any("error", err))
@@ -100,7 +110,6 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 	for i := range pendingBuilds {
 		bld := &pendingBuilds[i]
 
-		// TODO: limit builds by number or resource usage
 		repoConfig := p.Cfg.GetRepoConfig(bld.Repo.Owner, bld.Repo.Name)
 		if repoConfig == nil {
 			log.ErrorContext(
@@ -111,18 +120,25 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 			continue
 		}
 
-		pid, err := startBuilder(
-			BuilderParams{
-				DataDir:   p.Cfg.DataDir,
-				BuildID:   bld.ID,
-				CacheID:   bld.CacheID,
-				RepoOwner: bld.Repo.Owner,
-				RepoName:  bld.Repo.Name,
-				CommitSHA: bld.CommitSHA,
-				Cmd:       repoConfig.BuildCommand,
-				Secrets:   repoConfig.BuildSecrets,
-			},
-		)
+		// TODO: limit builds by number or resource usage
+		params := BuilderParams{
+			DataDir:      p.Cfg.DataDir,
+			BuildID:      bld.ID,
+			CacheID:      bld.CacheID,
+			RepoOwner:    bld.Repo.Owner,
+			RepoName:     bld.Repo.Name,
+			CommitSHA:    bld.CommitSHA,
+			BuildCmd:     repoConfig.BuildCommand,
+			BuildSecrets: repoConfig.BuildSecrets,
+		}
+
+		// Also run deploy command for default branch
+		if bld.Ref == fmt.Sprintf("refs/heads/%s", repoConfig.DefaultBranch) {
+			params.DeployCmd = repoConfig.DeployCommand
+			params.DeploySecrets = repoConfig.DeploySecrets
+		}
+
+		pid, err := startBuilder(params)
 		if err != nil {
 			log.ErrorContext(
 				ctx,
@@ -135,7 +151,6 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 
 		// Update start time for build
 		p.Builds.MarkBuildStarted(ctx, bld.ID, time.Now(), pid, bld.CacheID)
-
 		log.InfoContext(
 			ctx, "Started build",
 			slog.Uint64("build_id", bld.ID),
