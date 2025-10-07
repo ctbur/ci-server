@@ -155,5 +155,7 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 	if err != nil {
 		log.ErrorContext(ctx, "Failed to delete unused build dirs", slog.Any("error", err))
 	}
-	log.InfoContext(ctx, "Deleted unused build dirs", slog.Any("build_ids", deletedIDs))
+	if len(deletedIDs) > 0 {
+		log.InfoContext(ctx, "Deleted unused build dirs", slog.Any("build_ids", deletedIDs))
+	}
 }

@@ -199,6 +199,8 @@ func runBuildCommand(
 		buildCmd.Env = append(buildCmd.Env, envVar)
 	}
 
+	buildCmd.Env = append(buildCmd.Env, "CI=true")
+
 	logChan := make(chan store.LogEntry, 100)
 	errChan := make(chan error, 3)
 	var logReaderWaitGroup sync.WaitGroup

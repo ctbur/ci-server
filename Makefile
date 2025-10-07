@@ -1,8 +1,10 @@
 .PHONY: build dev
 
 build:
-	CGO_ENABLED=0 GOOS=linux go build -o ./build/server ./cmd/server/
-	tar -czvf ./build/ci-server.tar.gz ./build/server ./migrations ./ui
+	go build -o ./build/ci-server ./cmd/server/
+
+install: build
+	./scripts/install.sh
 
 dev:
 	CI_SERVER_DEV=1 go run ./cmd/server

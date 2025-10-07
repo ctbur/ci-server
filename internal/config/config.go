@@ -23,7 +23,7 @@ type RepoConfig struct {
 
 func Load(secretKey, configFile string) (*Config, error) {
 	var cfg Config
-	if _, err := toml.DecodeFile("ci-config.toml", &cfg); err != nil {
+	if _, err := toml.DecodeFile(configFile, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to load config file: %w", err)
 	}
 

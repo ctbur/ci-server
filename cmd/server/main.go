@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -35,6 +36,16 @@ func main() {
 }
 
 func runServer() error {
+	configDir := flag.String("config", ".", "Path to the directory containing ci-config.toml and users.htpasswd.")
+	libDir := flag.String("lib", ".", "Path to the directory containing the SQL migrations and ui directories.")
+
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n", os.Args[0])
+		fmt.Fprintln(os.Stderr, "\nOptions:")
+		flag.PrintDefaults()
+	}
+	flag.Parse()
+
 	var postgresURL string
 	if os.Getenv("CI_SERVER_DEV") == "1" {
 		slog.Info("Starting in development mode")
@@ -61,18 +72,21 @@ func runServer() error {
 	defer pool.Close()
 
 	// store.DropAllData(ctx, pool)
-	err = store.ApplyMigrations(slog.Default(), ctx, pool, "./migrations")
+	migrationsDir := path.Join(*libDir, "migrations")
+	err = store.ApplyMigrations(slog.Default(), ctx, pool, migrationsDir)
 	if err != nil {
 		return err
 	}
 	slog.Info("Schema 'public' recreated successfully")
 
-	cfg, err := config.Load(os.Getenv("CI_SERVER_SECRET_KEY"), "ci-config.toml")
+	configFile := path.Join(*configDir, "ci-config.toml")
+	cfg, err := config.Load(os.Getenv("CI_SERVER_SECRET_KEY"), configFile)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %v", err)
 	}
 
-	htpasswd, err := os.ReadFile("users.htpasswd")
+	htpasswdFile := path.Join(*configDir, "users.htpasswd")
+	htpasswd, err := os.ReadFile(htpasswdFile)
 	if err != nil {
 		return fmt.Errorf("failed to load users.htpasswd: %v", err)
 	}
@@ -83,7 +97,7 @@ func runServer() error {
 	}
 
 	tmpl, err := template.New("main").Funcs(ui.TemplateFuncMap).
-		ParseGlob("ui/templates/*.tmpl")
+		ParseGlob(path.Join(*libDir, "ui/templates/*.tmpl"))
 	if err != nil {
 		return fmt.Errorf("failed to load templates: %v", err)
 	}
@@ -108,7 +122,8 @@ func runServer() error {
 	logStore := store.LogStore{
 		LogDir: path.Join(cfg.DataDir, "build-logs"),
 	}
-	handler := web.Handler(cfg, userAuth, pgStore, logStore, tmpl, "ui/static/")
+	staticFileDir := path.Join(*libDir, "ui/static/")
+	handler := web.Handler(cfg, userAuth, pgStore, logStore, tmpl, staticFileDir)
 	web.RunServer(slog.Default(), handler, 8000)
 	return nil
 }
