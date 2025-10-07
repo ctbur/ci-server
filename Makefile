@@ -1,5 +1,8 @@
 .PHONY: build dev
 
+test:
+	go test ./...
+
 build:
 	go build -o ./build/ci-server ./cmd/server/
 
