@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"strconv"
 )
@@ -76,7 +77,7 @@ func (d *DataDir) RetainBuildDirs(retainedIDs []uint64) ([]uint64, error) {
 		}
 
 		buildDir := path.Join(buildRootDir, strconv.FormatUint(id, 10))
-		err := os.RemoveAll(buildDir)
+		err := removeAll(buildDir)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("failed to delete cache dir: %w", err))
 			continue
@@ -86,6 +87,25 @@ func (d *DataDir) RetainBuildDirs(retainedIDs []uint64) ([]uint64, error) {
 	}
 
 	return deletedIDs, errors.Join(errs...)
+}
+
+func removeAll(path string) error {
+	// Try RemoveAll directly
+	err := os.RemoveAll(path)
+	if err == nil {
+		return nil
+	}
+
+	// Try to give write permissions to every file
+	filepath.Walk(path, func(name string, info os.FileInfo, err error) error {
+		if err == nil {
+			_ = os.Chmod(name, 0700)
+		}
+		return nil
+	})
+
+	// Try again
+	return os.RemoveAll(path)
 }
 
 func (d *DataDir) CreateRootDirs() error {
