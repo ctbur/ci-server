@@ -2,50 +2,59 @@ package store
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path"
 	"time"
-
-	"github.com/jackc/pgx/v5"
 )
 
+type LogStream string
+
+const (
+	LogStreamStdout LogStream = "out"
+	LogStreamStderr LogStream = "err"
+)
+
+type LogStore struct {
+	LogDir string
+}
+
 type LogEntry struct {
-	ID        uint64
-	BuildID   uint64
-	Timestamp time.Time
-	Text      string
+	Stream    LogStream `json:"stream"`
+	Timestamp time.Time `json:"timestamp"`
+	Text      string    `json:"text"`
 }
 
-func (s PGStore) CreateLog(ctx context.Context, log LogEntry) error {
-	_, err := s.pool.Exec(
-		ctx,
-		`INSERT INTO logs (
-			build_id,
-			timestamp,
-			text
-		) VALUES (
-			$1, $2, $3
-		)`,
-		log.BuildID,
-		log.Timestamp,
-		log.Text,
-	)
-	return err
-}
+func (s LogStore) GetLogs(ctx context.Context, buildID uint64) ([]LogEntry, error) {
+	logFile := path.Join(s.LogDir, fmt.Sprintf("%d.jsonl", buildID))
 
-func (s PGStore) GetLogs(ctx context.Context, buildID uint64, fromLogID uint64) ([]LogEntry, error) {
-	rows, err := s.pool.Query(
-		ctx,
-		`SELECT id, timestamp, text FROM logs WHERE build_id = $1 AND id >= $2 ORDER BY id ASC`,
-		buildID,
-		fromLogID,
-	)
+	file, err := os.Open(logFile)
 	if err != nil {
-		return nil, err
+		if os.IsNotExist(err) {
+			return nil, nil // Return no logs
+		}
+		return nil, fmt.Errorf("failed to open log file '%s': %w", logFile, err)
 	}
-	defer rows.Close()
+	defer file.Close()
 
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (LogEntry, error) {
-		log := LogEntry{BuildID: buildID}
-		err := row.Scan(&log.ID, &log.Timestamp, &log.Text)
-		return log, err
-	})
+	decoder := json.NewDecoder(file)
+	var logs []LogEntry
+
+	for {
+		var entry LogEntry
+		err := decoder.Decode(&entry)
+
+		if errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			return nil, fmt.Errorf("failed to decode log entry from '%s': %w", logFile, err)
+		}
+
+		logs = append(logs, entry)
+	}
+
+	return logs, nil
 }

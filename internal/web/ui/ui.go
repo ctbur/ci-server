@@ -14,11 +14,11 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/web/wlog"
 )
 
-func Handler(cfg *config.Config, s store.PGStore, tmpl *template.Template) http.Handler {
+func Handler(cfg *config.Config, s store.PGStore, l store.LogStore, tmpl *template.Template) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.Handle("GET /{$}", handleBuildList(s, tmpl))
-	mux.Handle("GET /builds/{build_id}", handleBuildDetails(s, tmpl))
+	mux.Handle("GET /builds/{build_id}", handleBuildDetails(s, l, tmpl))
 
 	return mux
 }
@@ -97,7 +97,7 @@ type BuildDetailsPage struct {
 	LogLines  []LogLine
 }
 
-func handleBuildDetails(s store.PGStore, tmpl *template.Template) http.HandlerFunc {
+func handleBuildDetails(s store.PGStore, l store.LogStore, tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
@@ -119,7 +119,7 @@ func handleBuildDetails(s store.PGStore, tmpl *template.Template) http.HandlerFu
 			return
 		}
 
-		logs, err := s.GetLogs(ctx, buildID, 0)
+		logs, err := l.GetLogs(ctx, buildID)
 		if err != nil {
 			http.Error(w, "Failed to fetch logs", http.StatusInternalServerError)
 			slog.ErrorContext(ctx, "Failed to fetch logs", slog.Any("error", err))

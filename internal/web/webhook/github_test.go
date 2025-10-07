@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/assert"
 	"github.com/ctbur/ci-server/v2/internal/config"
@@ -56,10 +57,34 @@ func headerDel(header http.Header, key string) http.Header {
 	return h
 }
 
-func TestGitHubWebhook(t *testing.T) {
-	// test cases:
-	// - build when repo configured and signature correct
+type MockBuildCreator struct {
+	Build *MockBuild
+}
 
+type MockBuild struct {
+	RepoOwner, RepoName string
+	BuildMeta           store.BuildMeta
+	TS                  time.Time
+}
+
+func (c *MockBuildCreator) CreateBuild(
+	ctx context.Context, repoOwner, repoName string, build store.BuildMeta, ts time.Time,
+) (uint64, error) {
+	if c.Build != nil {
+		panic("Can only create one build per MockBuildCreator")
+	}
+
+	c.Build = &MockBuild{
+		RepoOwner: repoOwner,
+		RepoName:  repoName,
+		BuildMeta: build,
+		TS:        ts,
+	}
+
+	return 1, nil
+}
+
+func TestGitHubWebhook(t *testing.T) {
 	testCases := []struct {
 		desc          string
 		header        http.Header
@@ -175,16 +200,10 @@ Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.c
 				},
 			}
 
-			s := store.NewMockBuildStore()
-			ctx := context.Background()
-
-			s.CreateRepoIfNotExists(ctx, store.RepoMeta{
-				Owner: tc.repoOwner,
-				Name:  tc.repoName,
-			})
+			c := MockBuildCreator{}
 
 			// When
-			webhook := http.Handler(handleGitHub(s, &cfg))
+			webhook := http.Handler(handleGitHub(&c, &cfg))
 
 			req := httptest.NewRequest(http.MethodPost, "/", nil)
 			req.Header = tc.header
@@ -196,14 +215,14 @@ Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.c
 			// Then
 			assert.Equal(t, rr.Code, tc.wantHTTPCode, "handler returned wrong status code")
 
-			gotBuild, err := s.GetBuild(ctx, 1)
 			if tc.wantBuild != nil {
-				assert.NoError(t, err, "Error when fetching build")
-				if gotBuild != nil {
-					assert.Equal(t, gotBuild.BuildMeta, *tc.wantBuild, "Incorrect build created")
+				if c.Build != nil {
+					assert.Equal(t, c.Build.BuildMeta, *tc.wantBuild, "Incorrect build created")
+				} else {
+					t.Error("Build was not created when it should have been")
 				}
 			} else {
-				assert.ErrorIs(t, err, store.ErrNoBuild, "Error or build was created mistakenly")
+				assert.Equal(t, c.Build, nil, "Build was created mistakenly")
 			}
 		})
 	}

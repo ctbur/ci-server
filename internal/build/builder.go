@@ -1,0 +1,286 @@
+package build
+
+import (
+	"bufio"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"os"
+	"os/exec"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/ctbur/ci-server/v2/internal/store"
+)
+
+type BuilderParams struct {
+	DataDir   string   `json:"data_dir"`
+	BuildID   uint64   `json:"build_id"`
+	CacheID   *uint64  `json:"cache_id"`
+	RepoOwner string   `json:"repo_owner"`
+	RepoName  string   `json:"repo_name"`
+	CommitSHA string   `json:"commit_sha"`
+	Cmd       []string `json:"cmd"`
+}
+
+// Create a new builder process by starting the same executable as the current
+// process, but with the "builder" argument.
+func startBuilder(params BuilderParams) (int, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get executable path: %w", err)
+	}
+
+	// Add builder params to env var
+	var env []string
+	paramsJSON, err := json.Marshal(&params)
+	if err != nil {
+		return 0, fmt.Errorf("failed to build params to JSON: %w", err)
+	}
+	env = append(env, fmt.Sprintf("CI_BUILDER_PARAMS=%s", paramsJSON))
+
+	// Set build ID separately as it helps with identification of the builder process
+	env = append(env, fmt.Sprintf("CI_BUILDER_BUILD_ID=%d", params.BuildID))
+
+	builderCmd := exec.Command(exe, "builder")
+	builderCmd.Env = append(os.Environ(), env...)
+
+	// Keep builder running independently of server
+	builderCmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true,
+	}
+
+	logFile := getBuilderLogFile(params.DataDir, params.BuildID)
+	outFile, _ := os.OpenFile(logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o644)
+	builderCmd.Stdout = outFile
+	builderCmd.Stderr = outFile
+
+	if err := builderCmd.Start(); err != nil {
+		return 0, fmt.Errorf("failed to start builder process: %w", err)
+	}
+
+	return builderCmd.Process.Pid, nil
+}
+
+func RunBuilder() error {
+	paramsJSON := os.Getenv("CI_BUILDER_PARAMS")
+	if paramsJSON == "" {
+		return errors.New("missing CI_BUILDER_PARAMS for builder")
+	}
+
+	var params BuilderParams
+	if err := json.Unmarshal([]byte(paramsJSON), &params); err != nil {
+		return fmt.Errorf("failed to unmarshal build params JSON '%s': %w", paramsJSON, err)
+	}
+
+	// Run the build
+	slog.Info("Starting build...", slog.Any("command", params.Cmd))
+	exitCode, err := build(params)
+	if err != nil {
+		return fmt.Errorf("builder failed: %w", err)
+	}
+
+	// Write exit code to file
+	exitCodeFile := getExitCodeFile(params.DataDir, params.BuildID)
+	if err := os.WriteFile(exitCodeFile, []byte(strconv.Itoa(exitCode)), 0o644); err != nil {
+		return fmt.Errorf("failed to write exit code to file '%s': %w", exitCodeFile, err)
+	}
+	slog.Info("Wrote exit code to file", slog.Int("exit_code", exitCode))
+
+	return nil
+}
+
+// isBuilderRunning checks if a builder process is still running. The process is
+// identified using PID and build ID in env. This is to protect against PID
+// reuse.
+func isBuilderRunning(pid int, buildID uint64) bool {
+	// Check if the process is running
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+
+	// Check if process is running by sending signal 0 - necessary on Unix
+	err = process.Signal(syscall.Signal(0))
+	if err != nil {
+		return false
+	}
+
+	// Check if the BUILD_ID environment variable matches
+	cmdlinePath := fmt.Sprintf("/proc/%d/environ", pid)
+	data, err := os.ReadFile(cmdlinePath)
+	if err != nil {
+		return false
+	}
+
+	envVars := strings.Split(string(data), "\000")
+	buildEnvVar := fmt.Sprintf("CI_BUILDER_BUILD_ID=%d", buildID)
+	if !slices.Contains(envVars, buildEnvVar) {
+		return false
+	}
+
+	return true
+}
+
+func build(p BuilderParams) (int, error) {
+	buildDir := getBuildDir(p.DataDir, p.BuildID)
+
+	if err := os.Mkdir(buildDir, 0o700); err != nil {
+		return 0, fmt.Errorf("failed to create build dir: %w", err)
+	}
+
+	if p.CacheID != nil {
+		cacheDir := getBuildDir(p.DataDir, *p.CacheID)
+		if err := os.CopyFS(buildDir, os.DirFS(cacheDir)); err != nil {
+			return 0, fmt.Errorf(
+				"failed to copy repo cache dir '%s' to build dir '%s'",
+				cacheDir, buildDir,
+			)
+		}
+	}
+
+	if err := checkout(p.RepoOwner, p.RepoName, p.CommitSHA, buildDir); err != nil {
+		return 0, err
+	}
+
+	logFile := getLogFile(p.DataDir, p.BuildID)
+	exitCode, err := runBuildCommand(buildDir, p.Cmd, logFile)
+	if err != nil {
+		return 0, err
+	}
+
+	return exitCode, nil
+}
+
+func checkout(owner, name, commitSHA, targetDir string) error {
+	initCmd := exec.Command("git", "-C", targetDir, "init", "-q")
+	if err := initCmd.Run(); err != nil {
+		return fmt.Errorf("failed to init repo at '%s': %v", targetDir, err)
+	}
+
+	cloneURL := fmt.Sprintf("https://github.com/%s/%s.git", owner, name)
+	cloneCmd := exec.Command("git", "-C", targetDir, "fetch", "--depth=1", cloneURL, commitSHA)
+	if err := cloneCmd.Run(); err != nil {
+		return fmt.Errorf("failed to fetch repo at '%s': %v", cloneURL, err)
+	}
+
+	// Check out repo files to build dir
+	checkoutCmd := exec.Command(
+		"git",
+		"--git-dir", fmt.Sprintf("%s/.git", targetDir),
+		"--work-tree", targetDir,
+		"checkout", commitSHA, "--", ".",
+	)
+	if err := checkoutCmd.Run(); err != nil {
+		return fmt.Errorf("failed to checkout commit for '%s': %v", cloneURL, err)
+	}
+
+	return nil
+}
+
+func runBuildCommand(
+	dir string,
+	cmd []string,
+	logFile string,
+) (int, error) {
+	buildCmd := exec.Command(cmd[0], cmd[1:]...)
+	buildCmd.Dir = dir
+
+	logChan := make(chan store.LogEntry, 100)
+	errChan := make(chan error, 3)
+	var logReaderWaitGroup sync.WaitGroup
+
+	// Read stdout and stderr
+	readLogStream := func(
+		stream store.LogStream,
+		reader *io.PipeReader,
+		writer *io.PipeWriter,
+	) {
+		defer logReaderWaitGroup.Done()
+		defer reader.Close()
+		defer writer.Close()
+
+		scanner := bufio.NewScanner(reader)
+		for scanner.Scan() {
+			line := scanner.Text()
+			logChan <- store.LogEntry{
+				Stream:    stream,
+				Timestamp: time.Now(),
+				Text:      line,
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			errChan <- fmt.Errorf("failed to read build logs: %w", err)
+		}
+	}
+
+	outReader, outWriter := io.Pipe()
+	buildCmd.Stdout = outWriter
+	logReaderWaitGroup.Add(1)
+	go readLogStream(store.LogStreamStdout, outReader, outWriter)
+
+	errReader, errWriter := io.Pipe()
+	buildCmd.Stderr = errWriter
+	logReaderWaitGroup.Add(1)
+	go readLogStream(store.LogStreamStderr, errReader, errWriter)
+
+	// Write logs to file
+	logDoneChan := make(chan struct{})
+	go func() {
+		defer func() { logDoneChan <- struct{}{} }()
+		logF, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		if err != nil {
+			errChan <- fmt.Errorf("failed to open log file '%s': %w", logFile, err)
+			return
+		}
+		defer logF.Close()
+
+		encoder := json.NewEncoder(logF)
+		for logEntry := range logChan {
+			if err := encoder.Encode(logEntry); err != nil {
+				errChan <- fmt.Errorf("failed to write log entry to file: %w", err)
+				return
+			}
+		}
+	}()
+
+	// Run and wait for the command
+	if err := buildCmd.Start(); err != nil {
+		if _, ok := err.(*exec.ExitError); !ok {
+			return 0, fmt.Errorf("failed to start build command: %w", err)
+		}
+	}
+
+	errs := []error{}
+	if err := buildCmd.Wait(); err != nil && err.(*exec.ExitError) == nil {
+		errs = append(errs, fmt.Errorf("failed to execute build command: %w", err))
+	}
+
+	// Wait for log readers to finish
+	logReaderWaitGroup.Wait()
+	close(logChan)
+
+	// Wait for log writer to finish
+	<-logDoneChan
+
+	// Collect errors
+LOOP:
+	for {
+		select {
+		case err := <-errChan:
+			errs = append(errs, err)
+		default:
+			break LOOP
+		}
+	}
+	err := errors.Join(errs...)
+
+	return buildCmd.ProcessState.ExitCode(), err
+}

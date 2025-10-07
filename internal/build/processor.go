@@ -2,7 +2,6 @@ package build
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -11,10 +10,9 @@ import (
 )
 
 type Processor struct {
-	Builds   BuildProcessingStore
-	Logs     LogConsumer
-	Cfg      *config.Config
-	builders []Builder
+	Builds BuildProcessingStore
+	Dir    DataDir
+	Cfg    *config.Config
 }
 
 const dispatchPollPeriod = 500 * time.Millisecond
@@ -23,7 +21,7 @@ func (p *Processor) Run(log *slog.Logger, ctx context.Context) error {
 	for {
 		select {
 		case <-time.After(dispatchPollPeriod):
-			p.dispatch(log, ctx)
+			p.process(log, ctx)
 
 		case <-ctx.Done():
 			return nil
@@ -32,30 +30,67 @@ func (p *Processor) Run(log *slog.Logger, ctx context.Context) error {
 }
 
 type BuildProcessingStore interface {
-	GetPendingBuilds(ctx context.Context) ([]store.BuildWithRepoMeta, error)
-	UpdateBuildState(ctx context.Context, buildID uint64, state store.BuildState) error
+	GetPendingBuilds(ctx context.Context) ([]store.PendingBuild, error)
+	MarkBuildStarted(ctx context.Context, buildID uint64, started time.Time, pid int, cacheID *uint64) error
+	MarkBuildFinished(ctx context.Context, buildID uint64, finished time.Time, result store.BuildResult, cacheBuildFiles bool) error
+	ListBuilders(ctx context.Context) ([]store.Builder, error)
+	ListBuildDirsInUse(ctx context.Context) ([]uint64, error)
 }
 
-func (p *Processor) dispatch(log *slog.Logger, ctx context.Context) {
+type BuilderStore interface {
+	ListBuildIDs() ([]uint64, error)
+}
+
+func (p *Processor) process(log *slog.Logger, ctx context.Context) {
+	// TODO: ensure all errors are handled
+
 	// Handle finished builds
-	var newBuilders []Builder
-	for _, builder := range p.builders {
-		select {
-		case res := <-builder.resChan:
-			// Publish final build result
-			p.Builds.UpdateBuildState(ctx, builder.buildID, res.buildState)
-
-			if res.err != nil {
-				log.ErrorContext(ctx, "internal error during build", slog.Any("error", res.err))
-			}
-
-		default:
-			newBuilders = append(newBuilders, builder)
-		}
+	runningBuilds, err := p.Builds.ListBuilders(ctx)
+	if err != nil {
+		log.ErrorContext(ctx, "failed to get running builds", slog.Any("error", err))
+		return
 	}
-	p.builders = newBuilders
 
-	// Handle pending builds
+	for _, builder := range runningBuilds {
+		if isBuilderRunning(builder.PID, builder.BuildID) {
+			continue
+		}
+
+		// Update build state
+		exitCode, err := p.Dir.ReadAndCleanExitCode(builder.BuildID)
+		var result store.BuildResult
+		if err != nil {
+			result = store.BuildResultError
+			log.InfoContext(
+				ctx, "Builder error",
+				slog.Uint64("build_id", builder.BuildID),
+				slog.Any("error", err),
+			)
+		} else if exitCode != 0 {
+			result = store.BuildResultFailed
+		} else {
+			result = store.BuildResultSuccess
+		}
+
+		// If default branch, move files to cache, delete otherwise
+		// TODO: add config entry for default branch
+		cacheBuildFiles := builder.Ref == "refs/heads/main" || builder.Ref == "refs/heads/master"
+		err = p.Builds.MarkBuildFinished(ctx, builder.BuildID, time.Now(), result, cacheBuildFiles)
+		if err != nil {
+			log.InfoContext(ctx, "failed to finish build", slog.Any("error", err))
+			continue
+		}
+
+		log.InfoContext(
+			ctx, "Finished build",
+			slog.Uint64("build_id", builder.BuildID),
+			slog.Any("cache_id", builder.CacheID),
+			slog.Bool("made_cache", cacheBuildFiles),
+			slog.Any("result", result),
+		)
+	}
+
+	// Start new builds
 	pendingBuilds, err := p.Builds.GetPendingBuilds(ctx)
 	if err != nil {
 		log.ErrorContext(ctx, "failed to get pending builds", slog.Any("error", err))
@@ -65,68 +100,59 @@ func (p *Processor) dispatch(log *slog.Logger, ctx context.Context) {
 	for i := range pendingBuilds {
 		bld := &pendingBuilds[i]
 
-		// Update start time for build
-		now := time.Now()
-		bld.Started = &now
-		p.Builds.UpdateBuildState(ctx, bld.ID, bld.BuildState)
-
-		// Start build routine
 		// TODO: limit builds by number or resource usage
-		builder, err := p.runBuilder(bld)
-		if err != nil {
-			log.ErrorContext(ctx, "failed to run builder", slog.Any("error", err))
+		repoConfig := p.Cfg.GetRepoConfig(bld.Repo.Owner, bld.Repo.Name)
+		if repoConfig == nil {
+			log.ErrorContext(
+				ctx, "missing build config",
+				slog.String("owner", bld.Repo.Owner),
+				slog.String("repo", bld.Repo.Name),
+			)
 			continue
 		}
-		p.builders = append(p.builders, *builder)
-	}
-}
 
-type Builder struct {
-	buildID uint64
-	ctx     context.Context
-	resChan chan BuildResult
-}
-
-type BuildResult struct {
-	buildState store.BuildState
-	err        error
-}
-
-func (p *Processor) runBuilder(bld *store.BuildWithRepoMeta) (*Builder, error) {
-	repoConfig := p.Cfg.GetRepoConfig(bld.Owner, bld.Name)
-	if repoConfig == nil {
-		return nil, fmt.Errorf("missing build config for %s/%s", bld.Owner, bld.Name)
-	}
-
-	resChan := make(chan BuildResult)
-
-	go func() {
-		exitCode, err := build(bld, p.Cfg.BuildDir, repoConfig.BuildCommand, p.Logs)
-
-		buildState := bld.BuildState
-
-		// Set finish time
-		now := time.Now()
-		buildState.Finished = &now
-
-		// Determine store.BuildResult
-		var result store.BuildResult
+		pid, err := startBuilder(
+			BuilderParams{
+				DataDir:   p.Cfg.DataDir,
+				BuildID:   bld.ID,
+				CacheID:   bld.CacheID,
+				RepoOwner: bld.Repo.Owner,
+				RepoName:  bld.Repo.Name,
+				CommitSHA: bld.CommitSHA,
+				Cmd:       repoConfig.BuildCommand,
+			},
+		)
 		if err != nil {
-			result = store.BuildResultError
-		} else if exitCode != 0 {
-			result = store.BuildResultFailed
-		} else {
-			result = store.BuildResultSuccess
+			log.ErrorContext(
+				ctx,
+				"failed to start builder",
+				slog.Uint64("build_id", bld.ID)
+				slog.Any("error", err),
+			)
+			continue
 		}
-		buildState.Result = &result
 
-		resChan <- BuildResult{buildState, err}
-	}()
+		// Update start time for build
+		p.Builds.MarkBuildStarted(ctx, bld.ID, time.Now(), pid, bld.CacheID)
 
-	return &Builder{
-		buildID: bld.ID,
-		// TODO: pass context to build() to shut down or time out builds
-		ctx:     context.TODO(),
-		resChan: resChan,
-	}, nil
+		log.InfoContext(
+			ctx, "Started build",
+			slog.Uint64("build_id", bld.ID),
+			slog.Any("cache_id", bld.CacheID),
+			slog.Int("pid", pid),
+		)
+	}
+
+	// Clean up unused build dirs
+	buildDirsInUse, err := p.Builds.ListBuildDirsInUse(ctx)
+	if err != nil {
+		log.ErrorContext(ctx, "Failed to list build dirs in use", slog.Any("error", err))
+		return
+	}
+
+	deletedIDs, err := p.Dir.RetainBuildDirs(buildDirsInUse)
+	if err != nil {
+		log.ErrorContext(ctx, "Failed to delete unused build dirs", slog.Any("error", err))
+	}
+	log.InfoContext(ctx, "Deleted unused build dirs", slog.Any("build_ids", deletedIDs))
 }

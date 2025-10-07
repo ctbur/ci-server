@@ -8,16 +8,6 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/assert"
 )
 
-type BuildStoreImpl interface {
-	CreateRepoIfNotExists(ctx context.Context, repo RepoMeta) error
-	CountRepos(ctx context.Context) (uint64, error)
-	CreateBuild(ctx context.Context, repoOwner, repoName string, build BuildMeta, ts time.Time) (uint64, error)
-	UpdateBuildState(ctx context.Context, buildID uint64, state BuildState) error
-	GetBuild(ctx context.Context, buildID uint64) (*BuildWithRepoMeta, error)
-	ListBuilds(ctx context.Context) ([]BuildWithRepoMeta, error)
-	GetPendingBuilds(ctx context.Context) ([]BuildWithRepoMeta, error)
-}
-
 func TestBuildStore(t *testing.T) {
 	ctx := context.Background()
 
@@ -28,29 +18,21 @@ func TestBuildStore(t *testing.T) {
 	defer cleanup()
 
 	s := NewPGStore(pool)
-	BuildStoreTest(t, ctx, s)
-}
 
-func TestBuildStoreMock(t *testing.T) {
-	ctx := context.Background()
-	BuildStoreTest(t, ctx, NewMockBuildStore())
-}
-
-func BuildStoreTest(t *testing.T, ctx context.Context, s BuildStoreImpl) {
 	t.Run("Create new repositories", func(t *testing.T) {
-		err := s.CreateRepoIfNotExists(ctx, RepoMeta{
+		err := s.CreateRepoIfNotExists(ctx, Repo{
 			Owner: "owner",
 			Name:  "repo1",
 		})
 		assert.NoError(t, err, "Failed to create owner/repo1")
 
-		err = s.CreateRepoIfNotExists(ctx, RepoMeta{
+		err = s.CreateRepoIfNotExists(ctx, Repo{
 			Owner: "owner",
 			Name:  "repo2",
 		})
 		assert.NoError(t, err, "Failed to create owner/repo2")
 
-		err = s.CreateRepoIfNotExists(ctx, RepoMeta{
+		err = s.CreateRepoIfNotExists(ctx, Repo{
 			Owner: "owner",
 			Name:  "repo1",
 		})
@@ -62,31 +44,6 @@ func BuildStoreTest(t *testing.T, ctx context.Context, s BuildStoreImpl) {
 		assert.Equal(t, numRepos, 2, "There should be exactly 2 repositories")
 	})
 
-	// Defined here because it's used in two tests
-	r2b2want := BuildWithRepoMeta{
-		Build: Build{
-			ID:     4,
-			RepoID: 2,
-			Number: 2,
-			BuildMeta: BuildMeta{
-				Link:      "https://github.com/owner/repos2/b2",
-				Ref:       "ref_r2b2",
-				CommitSHA: "000022",
-				Message:   "message_r2b2",
-			},
-			BuildState: BuildState{
-				Created:  time.UnixMilli(1758910000022),
-				Started:  nil,
-				Finished: nil,
-				Result:   nil,
-			},
-		},
-		RepoMeta: RepoMeta{
-			Owner: "owner",
-			Name:  "repo2",
-		},
-	}
-
 	t.Run("Create and retrieve builds", func(t *testing.T) {
 		// Create builds
 		r1b1 := BuildMeta{
@@ -95,7 +52,7 @@ func BuildStoreTest(t *testing.T, ctx context.Context, s BuildStoreImpl) {
 			CommitSHA: "000011",
 			Message:   "message_r1b1",
 		}
-		r1b1ID, err := s.CreateBuild(ctx, "owner", "repo1", r1b1, time.UnixMilli(1758910000011))
+		r1b1ID, err := s.CreateBuild(ctx, "owner", "repo1", r1b1, time.UnixMilli(11))
 		assert.NoError(t, err, "Failed to create build")
 		assert.Equal(t, r1b1ID, 1, "Incorrect ID for build")
 
@@ -105,7 +62,7 @@ func BuildStoreTest(t *testing.T, ctx context.Context, s BuildStoreImpl) {
 			CommitSHA: "000012",
 			Message:   "message_r1b2",
 		}
-		r1b2ID, err := s.CreateBuild(ctx, "owner", "repo1", r1b2, time.UnixMilli(1758910000012))
+		r1b2ID, err := s.CreateBuild(ctx, "owner", "repo1", r1b2, time.UnixMilli(12))
 		assert.NoError(t, err, "Failed to create build")
 		assert.Equal(t, r1b2ID, 2, "Incorrect ID for build")
 
@@ -115,7 +72,7 @@ func BuildStoreTest(t *testing.T, ctx context.Context, s BuildStoreImpl) {
 			CommitSHA: "000021",
 			Message:   "message_r2b1",
 		}
-		r2b1ID, err := s.CreateBuild(ctx, "owner", "repo2", r2b1, time.UnixMilli(1758910000021))
+		r2b1ID, err := s.CreateBuild(ctx, "owner", "repo2", r2b1, time.UnixMilli(21))
 		assert.NoError(t, err, "Failed to create build")
 		assert.Equal(t, r2b1ID, 3, "Incorrect ID for build")
 
@@ -125,13 +82,37 @@ func BuildStoreTest(t *testing.T, ctx context.Context, s BuildStoreImpl) {
 			CommitSHA: "000022",
 			Message:   "message_r2b2",
 		}
-		r2b2ID, err := s.CreateBuild(ctx, "owner", "repo2", r2b2, time.UnixMilli(1758910000022))
+		r2b2ID, err := s.CreateBuild(ctx, "owner", "repo2", r2b2, time.UnixMilli(22))
 		assert.NoError(t, err, "Failed to create build")
 		assert.Equal(t, r2b2ID, 4, "Incorrect ID for build")
 
 		// Test getting single build
 		r2b2got, err := s.GetBuild(ctx, r2b2ID)
 		assert.NoError(t, err, "Failed to get build")
+
+		r2b2want := BuildWithRepo{
+			Build: Build{
+				ID:     4,
+				RepoID: 2,
+				Number: 2,
+				BuildMeta: BuildMeta{
+					Link:      "https://github.com/owner/repos2/b2",
+					Ref:       "ref_r2b2",
+					CommitSHA: "000022",
+					Message:   "message_r2b2",
+				},
+				BuildState: BuildState{
+					Created:  time.UnixMilli(22),
+					Started:  nil,
+					Finished: nil,
+					Result:   nil,
+				},
+			},
+			Repo: Repo{
+				Owner: "owner",
+				Name:  "repo2",
+			},
+		}
 		assert.Equal(t, *r2b2got, r2b2want, "Unexpected build retrieved")
 
 		_, err = s.GetBuild(ctx, 100)
@@ -149,33 +130,75 @@ func BuildStoreTest(t *testing.T, ctx context.Context, s BuildStoreImpl) {
 		assert.Equal(t, builds[0], r2b2want, "Unexpected build retrieved")
 	})
 
-	t.Run("Update build states and get pending builds", func(t *testing.T) {
-		// Update specific build state
-		started := time.UnixMilli(1758910001021)
-		finished := time.UnixMilli(1758910002021)
-		result := BuildResultSuccess
-		r2b1want := BuildState{
-			Created:  time.UnixMilli(1758910000021),
-			Started:  &started,
-			Finished: &finished,
-			Result:   &result,
-		}
+	t.Run("Get pending and running builds", func(t *testing.T) {
+		pendingBuilds, err := s.GetPendingBuilds(ctx)
+		assert.NoError(t, err, "Failed to get pending builds")
+		assert.Equal(t, len(pendingBuilds), 4, "Incorrect number of pending builds")
+		// Should be in order of creation
+		assert.Equal(t, pendingBuilds[0].ID, 1, "Incorrect order of pending builds")
+		assert.Equal(t, pendingBuilds[1].ID, 2, "Incorrect order of pending builds")
+		assert.Equal(t, pendingBuilds[2].ID, 3, "Incorrect order of pending builds")
+		assert.Equal(t, pendingBuilds[3].ID, 4, "Incorrect order of pending builds")
 
-		s.UpdateBuildState(ctx, 3, r2b1want)
+		runningBuilders, err := s.ListBuilders(ctx)
+		assert.NoError(t, err, "Failed to get running builds")
+		assert.Equal(t, len(runningBuilders), 0, "Got running builders where there shold be none")
+	})
 
-		r2b1got, err := s.GetBuild(ctx, 3)
+	t.Run("Start and finish first build of each repo", func(t *testing.T) {
+		// Finish r1b1 and cache results
+		s.MarkBuildStarted(ctx, 1, time.UnixMilli(1011), 10011, nil)
+		s.MarkBuildFinished(ctx, 1, time.UnixMilli(2011), BuildResultSuccess, true)
+		// Finish r2b1 without caching results
+		s.MarkBuildStarted(ctx, 3, time.UnixMilli(1021), 10021, nil)
+		s.MarkBuildFinished(ctx, 3, time.UnixMilli(2021), BuildResultSuccess, false)
+
+		pendingBuilds, err := s.GetPendingBuilds(ctx)
+		assert.NoError(t, err, "Failed to get pending builds")
+		assert.Equal(t, len(pendingBuilds), 2, "Incorrect number of pending builds")
+		// Should be in order of creation
+		assert.Equal(t, pendingBuilds[0].ID, 2, "Incorrect order of pending builds")
+		assert.Equal(t, pendingBuilds[1].ID, 4, "Incorrect order of pending builds")
+		assert.Equal(t, *pendingBuilds[0].CacheID, 1, "Incorrect cache ID")
+		assert.Equal(t, pendingBuilds[1].CacheID, nil, "Incorrect cache ID")
+
+		runningBuilders, err := s.ListBuilders(ctx)
+		assert.NoError(t, err, "Failed to get running builds")
+		assert.Equal(t, len(runningBuilders), 0, "Got running builders where there shold be none")
+
+		// Check start and finish times
+		r1r1got, err := s.GetBuild(ctx, 1)
 		assert.NoError(t, err, "Failed to get build")
-		assert.DeepEqual(t, r2b1got.BuildState, r2b1want, "Unexpected build state retrieved")
+		assert.Equal(t, *r1r1got.Started, time.UnixMilli(1011), "Incorrect start time")
+		assert.Equal(t, *r1r1got.Finished, time.UnixMilli(2011), "Incorrect start time")
 
-		// List pending builds
-		builds, err := s.GetPendingBuilds(ctx)
-		assert.NoError(t, err, "Failed to list pending builds")
-		assert.DeepEqual(t,
-			[]uint64{builds[0].ID, builds[1].ID, builds[2].ID},
-			// Created asc
-			[]uint64{1, 2, 4},
-			"Incorrect build IDs",
-		)
-		assert.Equal(t, builds[2], r2b2want, "Unexpected pending build retrieved")
+		r2r1got, err := s.GetBuild(ctx, 3)
+		assert.NoError(t, err, "Failed to get build")
+		assert.Equal(t, *r2r1got.Started, time.UnixMilli(1021), "Incorrect start time")
+		assert.Equal(t, *r2r1got.Finished, time.UnixMilli(2021), "Incorrect start time")
+	})
+
+	t.Run("Start second build of each repo", func(t *testing.T) {
+		// Start r1b2 with cache
+		cacheID := uint64(1)
+		s.MarkBuildStarted(ctx, 2, time.UnixMilli(1012), 10012, &cacheID)
+		// Start r1b2 without cache
+		s.MarkBuildStarted(ctx, 4, time.UnixMilli(1022), 10022, nil)
+
+		pendingBuilds, err := s.GetPendingBuilds(ctx)
+		assert.NoError(t, err, "Failed to get pending builds")
+		assert.Equal(t, len(pendingBuilds), 0, "Got pending builds when there should be none")
+
+		builders, err := s.ListBuilders(ctx)
+		assert.NoError(t, err, "Failed to list builders")
+		assert.Equal(t, len(builders), 2, "Incorrect number of builders")
+		// Check cache ID in order of build ID
+		assert.Equal(t, *builders[0].CacheID, 1, "Incorrect cache ID")
+		assert.Equal(t, builders[1].CacheID, nil, "Incorrect cache ID")
+
+		// Get list of build dirs to retain
+		buildIDs, err := s.ListBuildDirsInUse(ctx)
+		assert.NoError(t, err, "Failed to list build dirs in use")
+		assert.DeepEqual(t, buildIDs, []uint64{1, 2, 4}, "Incorrect build dirs in use")
 	})
 }
