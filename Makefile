@@ -1,10 +1,11 @@
 .PHONY: build dev
 
+export GOMODCACHE ?= $(shell pwd)/go
+
 test:
 	go test ./...
 
 build:
-	printenv
 	go build -o ./build/ci-server ./cmd/server/
 
 install: build
