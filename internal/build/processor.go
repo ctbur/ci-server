@@ -126,7 +126,7 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 			log.ErrorContext(
 				ctx,
 				"failed to start builder",
-				slog.Uint64("build_id", bld.ID)
+				slog.Uint64("build_id", bld.ID),
 				slog.Any("error", err),
 			)
 			continue
