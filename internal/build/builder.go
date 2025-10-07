@@ -153,7 +153,13 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 	}
 
 	// Run build command
-	logFile := getLogFile(p.DataDir, p.BuildID)
+	logFilePath := getLogFile(p.DataDir, p.BuildID)
+	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return 0, fmt.Errorf("failed to open log file: %w", err)
+	}
+	defer logFile.Close()
+
 	slog.Info("Starting build...", slog.Any("command", p.BuildCmd))
 	exitCode, err := runCmdInBuilder(buildDir, p.BuildCmd, p.BuildSecrets, logFile)
 	if err != nil {
@@ -203,7 +209,7 @@ func runCmdInBuilder(
 	dir string,
 	cmd []string,
 	secrets map[string]string,
-	logFile string,
+	logFile *os.File,
 ) (int, error) {
 	buildCmd := exec.Command(cmd[0], cmd[1:]...)
 	buildCmd.Dir = dir
@@ -220,14 +226,9 @@ func runCmdInBuilder(
 	var logReaderWaitGroup sync.WaitGroup
 
 	// Read stdout and stderr
-	readLogStream := func(
-		stream store.LogStream,
-		reader *io.PipeReader,
-		writer *io.PipeWriter,
-	) {
+	readLogStream := func(stream store.LogStream, reader *io.PipeReader) {
 		defer logReaderWaitGroup.Done()
 		defer reader.Close()
-		defer writer.Close()
 
 		scanner := bufio.NewScanner(reader)
 		for scanner.Scan() {
@@ -247,25 +248,19 @@ func runCmdInBuilder(
 	outReader, outWriter := io.Pipe()
 	buildCmd.Stdout = outWriter
 	logReaderWaitGroup.Add(1)
-	go readLogStream(store.LogStreamStdout, outReader, outWriter)
+	go readLogStream(store.LogStreamStdout, outReader)
 
 	errReader, errWriter := io.Pipe()
 	buildCmd.Stderr = errWriter
 	logReaderWaitGroup.Add(1)
-	go readLogStream(store.LogStreamStderr, errReader, errWriter)
+	go readLogStream(store.LogStreamStderr, errReader)
 
 	// Write logs to file
 	logDoneChan := make(chan struct{})
 	go func() {
 		defer func() { logDoneChan <- struct{}{} }()
-		logF, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-		if err != nil {
-			errChan <- fmt.Errorf("failed to open log file '%s': %w", logFile, err)
-			return
-		}
-		defer logF.Close()
 
-		encoder := json.NewEncoder(logF)
+		encoder := json.NewEncoder(logFile)
 		for logEntry := range logChan {
 			if err := encoder.Encode(logEntry); err != nil {
 				errChan <- fmt.Errorf("failed to write log entry to file: %w", err)
@@ -287,6 +282,8 @@ func runCmdInBuilder(
 	}
 
 	// Wait for log readers to finish
+	outWriter.Close()
+	errWriter.Close()
 	logReaderWaitGroup.Wait()
 	close(logChan)
 
