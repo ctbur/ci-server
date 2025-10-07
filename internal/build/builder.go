@@ -233,6 +233,8 @@ func runInBuildContext(
 		"CI=true",
 		// Pass along PATH variable
 		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
+		// Set build dir as HOME
+		fmt.Sprintf("HOME=%s", dir),
 	)
 	buildCmd.Env = cmdEnv
 

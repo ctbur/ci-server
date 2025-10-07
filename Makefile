@@ -1,7 +1,5 @@
 .PHONY: build dev
 
-export GOPATH ?= $(shell pwd)/go
-
 test:
 	go test ./...
 
