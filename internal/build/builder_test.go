@@ -25,6 +25,7 @@ func TestRunInBuildContext(t *testing.T) {
 		buildDir,
 		[]string{"echo", "test"},
 		make(map[string]string),
+		make(map[string]string),
 		logFile,
 	)
 

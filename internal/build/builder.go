@@ -26,6 +26,7 @@ type BuilderParams struct {
 	RepoOwner     string            `json:"repo_owner"`
 	RepoName      string            `json:"repo_name"`
 	CommitSHA     string            `json:"commit_sha"`
+	EnvVars       map[string]string `json:"env_vars"`
 	BuildCmd      []string          `json:"build_cmd"`
 	BuildSecrets  map[string]string `json:"build_secrets"`
 	DeployCmd     []string          `json:"deploy_cmd"`
@@ -40,19 +41,20 @@ func startBuilder(params BuilderParams) (int, error) {
 		return 0, fmt.Errorf("failed to get executable path: %w", err)
 	}
 
-	// Add builder params to env var
-	var env []string
 	paramsJSON, err := json.Marshal(&params)
 	if err != nil {
 		return 0, fmt.Errorf("failed to build params to JSON: %w", err)
 	}
-	env = append(env, fmt.Sprintf("CI_BUILDER_PARAMS=%s", paramsJSON))
-
-	// Set build ID separately as it helps with identification of the builder process
-	env = append(env, fmt.Sprintf("CI_BUILDER_BUILD_ID=%d", params.BuildID))
 
 	builderCmd := exec.Command(exe, "builder")
-	builderCmd.Env = append(os.Environ(), env...)
+	builderCmd.Env = []string{
+		// Pass along PATH variable
+		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
+		// Add builder params to env var
+		fmt.Sprintf("CI_BUILDER_PARAMS=%s", paramsJSON),
+		// Set build ID separately as it helps with identification of the builder process
+		fmt.Sprintf("CI_BUILDER_BUILD_ID=%d", params.BuildID),
+	}
 
 	// Keep builder running independently of server
 	builderCmd.SysProcAttr = &syscall.SysProcAttr{
@@ -138,7 +140,7 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 	}
 
 	if p.CacheID != nil {
-		slog.Info("Copying cache", slog.Uint64("cache_id", *p.CacheID))
+		log.Info("Copying cache", slog.Uint64("cache_id", *p.CacheID))
 		cacheDir := getBuildDir(p.DataDir, *p.CacheID)
 		if err := os.CopyFS(buildDir, os.DirFS(cacheDir)); err != nil {
 			return 0, fmt.Errorf(
@@ -160,8 +162,8 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 	}
 	defer logFile.Close()
 
-	slog.Info("Starting build...", slog.Any("command", p.BuildCmd))
-	exitCode, err := runInBuildContext(buildDir, p.BuildCmd, p.BuildSecrets, logFile)
+	log.Info("Starting build...", slog.Any("command", p.BuildCmd))
+	exitCode, err := runInBuildContext(buildDir, p.BuildCmd, p.EnvVars, p.BuildSecrets, logFile)
 	if err != nil {
 		return 0, err
 	}
@@ -170,8 +172,8 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 	if exitCode != 0 || len(p.DeployCmd) == 0 {
 		return exitCode, nil
 	}
-	slog.Info("Starting deploy...", slog.Any("command", p.DeployCmd))
-	exitCode, err = runInBuildContext(buildDir, p.DeployCmd, p.DeploySecrets, logFile)
+	log.Info("Starting deploy...", slog.Any("command", p.DeployCmd))
+	exitCode, err = runInBuildContext(buildDir, p.DeployCmd, p.EnvVars, p.DeploySecrets, logFile)
 	if err != nil {
 		return 0, err
 	}
@@ -208,6 +210,7 @@ func checkout(owner, name, commitSHA, targetDir string) error {
 func runInBuildContext(
 	dir string,
 	cmd []string,
+	env map[string]string,
 	secrets map[string]string,
 	logFile *os.File,
 ) (int, error) {
@@ -216,15 +219,24 @@ func runInBuildContext(
 	// Run the command in the build dir
 	buildCmd.Dir = dir
 
-	// Add default env vars and secrets to the environment
-	env := []string{
-		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
-		"CI=true",
-	}
+	// Add secrets to the environment
+	var cmdEnv []string
 	for secret, value := range secrets {
-		env = append(env, fmt.Sprintf("%s=%s", secret, value))
+		cmdEnv = append(cmdEnv, fmt.Sprintf("%s=%s", secret, value))
 	}
-	buildCmd.Env = env
+	// Add configured env vars
+	for name, value := range env {
+		cmdEnv = append(cmdEnv, fmt.Sprintf("%s=%s", name, value))
+	}
+	// Add default env vars
+	cmdEnv = append(cmdEnv,
+		"CI=true",
+		// Pass along PATH variable
+		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
+		// Set build dir as HOME
+		fmt.Sprintf("HOME=%s", dir),
+	)
+	buildCmd.Env = cmdEnv
 
 	logChan := make(chan store.LogEntry, 100)
 	errChan := make(chan error, 3)
