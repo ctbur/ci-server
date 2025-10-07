@@ -120,6 +120,7 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 				RepoName:  bld.Repo.Name,
 				CommitSHA: bld.CommitSHA,
 				Cmd:       repoConfig.BuildCommand,
+				Secrets:   repoConfig.BuildSecrets,
 			},
 		)
 		if err != nil {

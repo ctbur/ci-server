@@ -20,13 +20,14 @@ import (
 )
 
 type BuilderParams struct {
-	DataDir   string   `json:"data_dir"`
-	BuildID   uint64   `json:"build_id"`
-	CacheID   *uint64  `json:"cache_id"`
-	RepoOwner string   `json:"repo_owner"`
-	RepoName  string   `json:"repo_name"`
-	CommitSHA string   `json:"commit_sha"`
-	Cmd       []string `json:"cmd"`
+	DataDir   string            `json:"data_dir"`
+	BuildID   uint64            `json:"build_id"`
+	CacheID   *uint64           `json:"cache_id"`
+	RepoOwner string            `json:"repo_owner"`
+	RepoName  string            `json:"repo_name"`
+	CommitSHA string            `json:"commit_sha"`
+	Cmd       []string          `json:"cmd"`
+	Secrets   map[string]string `json:"secrets"`
 }
 
 // Create a new builder process by starting the same executable as the current
@@ -150,7 +151,7 @@ func build(p BuilderParams) (int, error) {
 	}
 
 	logFile := getLogFile(p.DataDir, p.BuildID)
-	exitCode, err := runBuildCommand(buildDir, p.Cmd, logFile)
+	exitCode, err := runBuildCommand(buildDir, p.Cmd, p.Secrets, logFile)
 	if err != nil {
 		return 0, err
 	}
@@ -187,10 +188,16 @@ func checkout(owner, name, commitSHA, targetDir string) error {
 func runBuildCommand(
 	dir string,
 	cmd []string,
+	secrets map[string]string,
 	logFile string,
 ) (int, error) {
 	buildCmd := exec.Command(cmd[0], cmd[1:]...)
 	buildCmd.Dir = dir
+
+	for secret, value := range secrets {
+		envVar := fmt.Sprintf("%s=%s", secret, value)
+		buildCmd.Env = append(buildCmd.Env, envVar)
+	}
 
 	logChan := make(chan store.LogEntry, 100)
 	errChan := make(chan error, 3)

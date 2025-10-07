@@ -15,6 +15,8 @@ type RepoConfig struct {
 	Owner        string   `toml:"owner"`
 	Name         string   `toml:"name"`
 	BuildCommand []string `toml:"build_command"`
+	// Name mapped to "encrypted_build_secrets" - we decrypt it as part of loading the config
+	BuildSecrets map[string]string `toml:"encrypted_build_secrets"`
 	// Name mapped to "encrypted_webhook_secret" - we decrypt it as part of loading the config
 	WebhookSecret *string `toml:"encrypted_webhook_secret,omitempty"`
 }
@@ -25,20 +27,31 @@ func Load(secretKey, configFile string) (*Config, error) {
 		return nil, fmt.Errorf("failed to load config file: %w", err)
 	}
 
+	// Decrypt secrets
 	for i := range cfg.Repos {
-		if cfg.Repos[i].WebhookSecret == nil {
-			continue
+		for secretName := range cfg.Repos[i].BuildSecrets {
+			plaintext, err := decryptSecret(secretKey, cfg.Repos[i].BuildSecrets[secretName])
+			if err != nil {
+				return nil, fmt.Errorf(
+					"failed to decrypt build secret of %s/%s: %w",
+					cfg.Repos[i].Owner, cfg.Repos[i].Name, err,
+				)
+			}
+
+			cfg.Repos[i].BuildSecrets[secretName] = plaintext
 		}
 
-		plaintext, err := decryptSecret(secretKey, *cfg.Repos[i].WebhookSecret)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to decrypt webhook secret of %s/%s: %w",
-				cfg.Repos[i].Owner, cfg.Repos[i].Name, err,
-			)
-		}
+		if cfg.Repos[i].WebhookSecret != nil {
+			plaintext, err := decryptSecret(secretKey, *cfg.Repos[i].WebhookSecret)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"failed to decrypt webhook secret of %s/%s: %w",
+					cfg.Repos[i].Owner, cfg.Repos[i].Name, err,
+				)
+			}
 
-		cfg.Repos[i].WebhookSecret = &plaintext
+			cfg.Repos[i].WebhookSecret = &plaintext
+		}
 	}
 
 	return &cfg, nil
