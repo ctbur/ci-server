@@ -4,6 +4,7 @@ test:
 	go test ./...
 
 build:
+	printenv
 	go build -o ./build/ci-server ./cmd/server/
 
 install: build
