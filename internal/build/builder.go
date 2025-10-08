@@ -137,18 +137,20 @@ func isBuilderRunning(pid int, buildID uint64) bool {
 func build(log slog.Logger, p BuilderParams) (int, error) {
 	buildDir := getBuildDir(p.DataDir, p.BuildID)
 
-	if err := os.Mkdir(buildDir, 0o700); err != nil {
-		return 0, fmt.Errorf("failed to create build dir: %w", err)
-	}
-
 	if p.CacheID != nil {
 		log.Info("Copying cache", slog.Uint64("cache_id", *p.CacheID))
 		cacheDir := getBuildDir(p.DataDir, *p.CacheID)
+		// Copying will create the build dir
 		if err := copyDirs(cacheDir, buildDir); err != nil {
 			return 0, fmt.Errorf(
 				"failed to copy repo cache dir '%s' to build dir '%s': %w",
 				cacheDir, buildDir, err,
 			)
+		}
+	} else {
+		// Create an empty build dir
+		if err := os.Mkdir(buildDir, 0o700); err != nil {
+			return 0, fmt.Errorf("failed to create build dir: %w", err)
 		}
 	}
 
