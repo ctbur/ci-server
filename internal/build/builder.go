@@ -145,8 +145,8 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 		cacheDir := getBuildDir(p.DataDir, *p.CacheID)
 		if err := os.CopyFS(buildDir, os.DirFS(cacheDir)); err != nil {
 			return 0, fmt.Errorf(
-				"failed to copy repo cache dir '%s' to build dir '%s'",
-				cacheDir, buildDir,
+				"failed to copy repo cache dir '%s' to build dir '%s': %w",
+				cacheDir, buildDir, err,
 			)
 		}
 	}
