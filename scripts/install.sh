@@ -22,7 +22,7 @@ if [ "$CI" = "true" ]; then
     fi
 
     # Add key from environment variable, removing carriage returns
-    echo "$SSH_KEY" | tr -d '\r' | ssh-add -
+    echo "$HOST_SSH_KEY" | tr -d '\r' | ssh-add -
 else
     echo "Running in local mode: Using SSH key from ~/.ssh"
 fi
