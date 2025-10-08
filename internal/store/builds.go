@@ -55,21 +55,6 @@ type BuildMeta struct {
 	Author    string
 }
 
-type BuildState struct {
-	Created  time.Time
-	Started  *time.Time
-	Finished *time.Time
-	Result   *BuildResult
-}
-
-type Build struct {
-	ID     uint64
-	RepoID uint64
-	Number uint64
-	BuildMeta
-	BuildState
-}
-
 func (s PGStore) CreateBuild(
 	ctx context.Context,
 	repoOwner, repoName string,
@@ -238,15 +223,22 @@ func (s PGStore) MarkBuildFinished(
 	return tx.Commit(ctx)
 }
 
-type BuildWithRepo struct {
-	Build
-	Repo
+type Build struct {
+	ID       uint64
+	RepoID   uint64
+	Number   uint64
+	Created  time.Time
+	Started  *time.Time
+	Finished *time.Time
+	Result   *BuildResult
+	Repo     Repo
+	BuildMeta
 }
 
 var ErrNoBuild error = errors.New("build does not exist")
 
-func (s PGStore) GetBuild(ctx context.Context, buildID uint64) (*BuildWithRepo, error) {
-	var b BuildWithRepo
+func (s PGStore) GetBuild(ctx context.Context, buildID uint64) (*Build, error) {
+	var b Build
 
 	err := s.pool.QueryRow(
 		ctx,
@@ -270,18 +262,18 @@ func (s PGStore) GetBuild(ctx context.Context, buildID uint64) (*BuildWithRepo, 
 		WHERE b.id = $1`,
 		buildID,
 	).Scan(
-		&b.Build.ID,
-		&b.Build.RepoID,
-		&b.Build.Number,
-		&b.Build.Link,
-		&b.Build.Ref,
-		&b.Build.CommitSHA,
-		&b.Build.Message,
-		&b.Build.Author,
-		&b.Build.Created,
-		&b.Build.Started,
-		&b.Build.Finished,
-		&b.Build.Result,
+		&b.ID,
+		&b.RepoID,
+		&b.Number,
+		&b.Link,
+		&b.Ref,
+		&b.CommitSHA,
+		&b.Message,
+		&b.Author,
+		&b.Created,
+		&b.Started,
+		&b.Finished,
+		&b.Result,
 		&b.Repo.Owner,
 		&b.Repo.Name,
 	)
@@ -293,7 +285,7 @@ func (s PGStore) GetBuild(ctx context.Context, buildID uint64) (*BuildWithRepo, 
 	return &b, err
 }
 
-func (s PGStore) ListBuilds(ctx context.Context) ([]BuildWithRepo, error) {
+func (s PGStore) ListBuilds(ctx context.Context) ([]Build, error) {
 	rows, err := s.pool.Query(
 		ctx,
 		`SELECT
@@ -320,21 +312,21 @@ func (s PGStore) ListBuilds(ctx context.Context) ([]BuildWithRepo, error) {
 	}
 	defer rows.Close()
 
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (BuildWithRepo, error) {
-		var b BuildWithRepo
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Build, error) {
+		var b Build
 		err := rows.Scan(
-			&b.Build.ID,
-			&b.Build.RepoID,
-			&b.Build.Number,
-			&b.Build.Link,
-			&b.Build.Ref,
-			&b.Build.CommitSHA,
-			&b.Build.Message,
-			&b.Build.Author,
-			&b.Build.Created,
-			&b.Build.Started,
-			&b.Build.Finished,
-			&b.Build.Result,
+			&b.ID,
+			&b.RepoID,
+			&b.Number,
+			&b.Link,
+			&b.Ref,
+			&b.CommitSHA,
+			&b.Message,
+			&b.Author,
+			&b.Created,
+			&b.Started,
+			&b.Finished,
+			&b.Result,
 			&b.Repo.Owner,
 			&b.Repo.Name,
 		)
@@ -453,9 +445,4 @@ func (s PGStore) ListBuildDirsInUse(ctx context.Context) ([]uint64, error) {
 			err := row.Scan(&id)
 			return id, err
 		})
-}
-
-func (s PGStore) TruncateAll(ctx context.Context) error {
-	_, err := s.pool.Exec(ctx, `TRUNCATE TABLE builds, repos, builders RESTART IDENTITY CASCADE`)
-	return err
 }

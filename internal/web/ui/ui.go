@@ -54,12 +54,12 @@ func handleBuildList(s store.PGStore, tmpl *template.Template) http.HandlerFunc 
 		for i, b := range builds {
 			card := BuildCard{
 				ID:        b.ID,
-				Status:    buildStatus(b.BuildState),
+				Status:    buildStatus(b),
 				Message:   shortCommitMessage(b.Message),
 				Author:    b.Author,
 				Ref:       b.Ref,
 				CommitSHA: b.CommitSHA[:min(7, len(b.CommitSHA))],
-				Duration:  durationSinceBuildStart(b.BuildState),
+				Duration:  durationSinceBuildStart(b),
 				Started:   b.Started,
 			}
 			buildCards[i] = card
@@ -135,13 +135,13 @@ func handleBuildDetails(s store.PGStore, l store.LogStore, tmpl *template.Templa
 		}
 
 		params := &BuildDetailsPage{
-			RepoOwner: build.Owner,
-			RepoName:  build.Name,
-			Status:    buildStatus(build.BuildState),
+			RepoOwner: build.Repo.Owner,
+			RepoName:  build.Repo.Name,
+			Status:    buildStatus(*build),
 			Message:   shortCommitMessage(build.Message),
 			Number:    build.Number,
 			Started:   build.Started,
-			Duration:  durationSinceBuildStart(build.BuildState),
+			Duration:  durationSinceBuildStart(*build),
 			LogLines:  logLines,
 		}
 
@@ -158,7 +158,7 @@ func handleBuildDetails(s store.PGStore, l store.LogStore, tmpl *template.Templa
 	}
 }
 
-func durationSinceBuildStart(b store.BuildState) *time.Duration {
+func durationSinceBuildStart(b store.Build) *time.Duration {
 	if b.Started == nil {
 		return nil
 	}
@@ -172,7 +172,7 @@ func durationSinceBuildStart(b store.BuildState) *time.Duration {
 	return &duration
 }
 
-func buildStatus(b store.BuildState) string {
+func buildStatus(b store.Build) string {
 	if b.Result != nil {
 		return string(*b.Result)
 	} else if b.Started != nil {

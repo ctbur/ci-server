@@ -90,24 +90,20 @@ func TestBuildStore(t *testing.T) {
 		r2b2got, err := s.GetBuild(ctx, r2b2ID)
 		assert.NoError(t, err, "Failed to get build")
 
-		r2b2want := BuildWithRepo{
-			Build: Build{
-				ID:     4,
-				RepoID: 2,
-				Number: 2,
-				BuildMeta: BuildMeta{
-					Link:      "https://github.com/owner/repos2/b2",
-					Ref:       "ref_r2b2",
-					CommitSHA: "000022",
-					Message:   "message_r2b2",
-				},
-				BuildState: BuildState{
-					Created:  time.UnixMilli(22),
-					Started:  nil,
-					Finished: nil,
-					Result:   nil,
-				},
+		r2b2want := Build{
+			ID:     4,
+			RepoID: 2,
+			Number: 2,
+			BuildMeta: BuildMeta{
+				Link:      "https://github.com/owner/repos2/b2",
+				Ref:       "ref_r2b2",
+				CommitSHA: "000022",
+				Message:   "message_r2b2",
 			},
+			Created:  time.UnixMilli(22),
+			Started:  nil,
+			Finished: nil,
+			Result:   nil,
 			Repo: Repo{
 				Owner: "owner",
 				Name:  "repo2",
