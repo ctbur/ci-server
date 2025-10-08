@@ -23,7 +23,7 @@ if [ "$CI" = "true" ]; then
     eval "$(ssh-agent -s)" > /dev/null
 
     # Kill the agent when the script exits. $SSH_AGENT_PID is set by 'eval' above
-    trap "echo 'Stopping SSH Agent'; kill $SSH_AGENT_PID;" EXIT
+    trap "kill $SSH_AGENT_PID; echo 'Stopped SSH Agent';" EXIT
 
     if [ -z "$SSH_HOST_KEY" ]; then
         echo "ERROR: CI mode requires SSH_HOST_KEY environment variable." >&2
@@ -42,7 +42,7 @@ rsync -e "ssh ${SSH_OPTS}" -avz "./migrations" "./ui" "${REMOTE_HOST}:${BASE_DIR
 echo ""
 
 echo "Restarting service..."
-ssh ${SSH_OPTS} "${REMOTE_HOST}" "set -euxo pipefail; systemctl restart ci.service"
+ssh ${SSH_OPTS} "${REMOTE_HOST}" "systemctl restart ci.service"
 echo ""
 
 echo "Done"
