@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -154,6 +155,12 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 		return 0, err
 	}
 
+	// Get absoluate build dir path for sandbox parameters
+	absBuildDir, err := filepath.Abs(buildDir)
+	if err != nil {
+		return 0, fmt.Errorf("failed to resolve build dir path: %w", err)
+	}
+
 	// Run build command
 	logFilePath := getLogFile(p.DataDir, p.BuildID)
 	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
@@ -163,7 +170,8 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 	defer logFile.Close()
 
 	log.Info("Starting build...", slog.Any("command", p.BuildCmd))
-	exitCode, err := runInBuildContext(buildDir, p.BuildCmd, p.EnvVars, p.BuildSecrets, logFile)
+	buildCmd := buildSandboxedCommand(absBuildDir, p.BuildCmd, p.EnvVars, p.BuildSecrets)
+	exitCode, err := runWithLogs(buildCmd, logFile)
 	if err != nil {
 		return 0, err
 	}
@@ -173,7 +181,8 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 		return exitCode, nil
 	}
 	log.Info("Starting deploy...", slog.Any("command", p.DeployCmd))
-	exitCode, err = runInBuildContext(buildDir, p.DeployCmd, p.EnvVars, p.DeploySecrets, logFile)
+	deployCmd := buildSandboxedCommand(absBuildDir, p.DeployCmd, p.EnvVars, p.DeploySecrets)
+	exitCode, err = runWithLogs(deployCmd, logFile)
 	if err != nil {
 		return 0, err
 	}
@@ -207,37 +216,52 @@ func checkout(owner, name, commitSHA, targetDir string) error {
 	return nil
 }
 
-func runInBuildContext(
-	dir string,
+func buildSandboxedCommand(
+	absBuildDir string,
 	cmd []string,
 	env map[string]string,
 	secrets map[string]string,
-	logFile *os.File,
-) (int, error) {
-	buildCmd := exec.Command(cmd[0], cmd[1:]...)
+) *exec.Cmd {
+	// Run command in bubblewrap sandbox
+	var bwrapSandbox = []string{
+		"bwrap",
+		"--die-with-parent",
+		"--unshare-all", "--share-net",
+		"--ro-bind", "/", "/",
+		"--dev", "/dev",
+		"--tmpfs", "/tmp",
+		"--bind", absBuildDir, absBuildDir,
+		"--chdir", absBuildDir,
+	}
+	cmd = append(bwrapSandbox, cmd...)
+	sandboxCmd := exec.Command(cmd[0], cmd[1:]...)
 
-	// Run the command in the build dir
-	buildCmd.Dir = dir
-
-	// Add secrets to the environment
+	// Add secrets and env vars to the environment
 	var cmdEnv []string
 	for secret, value := range secrets {
 		cmdEnv = append(cmdEnv, fmt.Sprintf("%s=%s", secret, value))
 	}
-	// Add configured env vars
 	for name, value := range env {
 		cmdEnv = append(cmdEnv, fmt.Sprintf("%s=%s", name, value))
 	}
+
 	// Add default env vars
 	cmdEnv = append(cmdEnv,
 		"CI=true",
 		// Pass along PATH variable
 		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
 		// Set build dir as HOME
-		fmt.Sprintf("HOME=%s", dir),
+		fmt.Sprintf("HOME=%s", absBuildDir),
 	)
-	buildCmd.Env = cmdEnv
 
+	sandboxCmd.Env = cmdEnv
+	return sandboxCmd
+}
+
+func runWithLogs(
+	cmd *exec.Cmd,
+	logFile *os.File,
+) (int, error) {
 	logChan := make(chan store.LogEntry, 100)
 	errChan := make(chan error, 3)
 	var logReaderWaitGroup sync.WaitGroup
@@ -263,12 +287,12 @@ func runInBuildContext(
 	}
 
 	outReader, outWriter := io.Pipe()
-	buildCmd.Stdout = outWriter
+	cmd.Stdout = outWriter
 	logReaderWaitGroup.Add(1)
 	go readLogStream(store.LogStreamStdout, outReader)
 
 	errReader, errWriter := io.Pipe()
-	buildCmd.Stderr = errWriter
+	cmd.Stderr = errWriter
 	logReaderWaitGroup.Add(1)
 	go readLogStream(store.LogStreamStderr, errReader)
 
@@ -287,14 +311,14 @@ func runInBuildContext(
 	}()
 
 	// Run and wait for the command
-	if err := buildCmd.Start(); err != nil {
+	if err := cmd.Start(); err != nil {
 		if _, ok := err.(*exec.ExitError); !ok {
 			return 0, fmt.Errorf("failed to start build command: %w", err)
 		}
 	}
 
 	errs := []error{}
-	if err := buildCmd.Wait(); err != nil && err.(*exec.ExitError) == nil {
+	if err := cmd.Wait(); err != nil && err.(*exec.ExitError) == nil {
 		errs = append(errs, fmt.Errorf("failed to execute build command: %w", err))
 	}
 
@@ -317,7 +341,6 @@ LOOP:
 			break LOOP
 		}
 	}
-	err := errors.Join(errs...)
 
-	return buildCmd.ProcessState.ExitCode(), err
+	return cmd.ProcessState.ExitCode(), errors.Join(errs...)
 }
