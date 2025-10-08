@@ -77,7 +77,7 @@ func handleBuildList(s store.PGStore, tmpl *template.Template) http.HandlerFunc 
 		}
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		b.WriteTo(w)
+		_, _ = b.WriteTo(w)
 	}
 }
 
@@ -154,7 +154,7 @@ func handleBuildDetails(s store.PGStore, l store.LogStore, tmpl *template.Templa
 		}
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		b.WriteTo(w)
+		_, _ = b.WriteTo(w)
 	}
 }
 

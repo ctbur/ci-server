@@ -62,6 +62,6 @@ func handleManual(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 		res := ManualResult{
 			BuildID: buildID,
 		}
-		renderStruct(w, res, http.StatusOK)
+		_ = renderStruct(w, res, http.StatusOK)
 	}
 }

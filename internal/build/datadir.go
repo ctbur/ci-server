@@ -34,7 +34,8 @@ type DataDir struct {
 
 func (d *DataDir) ReadAndCleanExitCode(buildID uint64) (int, error) {
 	exitCodeFile := getExitCodeFile(d.RootDir, buildID)
-	data, err := os.ReadFile(exitCodeFile)
+	// sec: Path is from a trusted user
+	data, err := os.ReadFile(exitCodeFile) // #nosec G304
 	if err != nil {
 		return 0, err
 	}
@@ -97,9 +98,9 @@ func removeAll(path string) error {
 	}
 
 	// Try to give write permissions to every file
-	filepath.Walk(path, func(name string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(path, func(name string, info os.FileInfo, err error) error {
 		if err == nil {
-			_ = os.Chmod(name, 0700)
+			_ = os.Chmod(name, 0600)
 		}
 		return nil
 	})

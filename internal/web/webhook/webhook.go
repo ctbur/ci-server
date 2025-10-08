@@ -38,9 +38,9 @@ func decodeJSON[T any](body io.Reader) (*T, error) {
 	return &v, nil
 }
 
-func renderStruct(w http.ResponseWriter, v any, status int) {
+func renderStruct(w http.ResponseWriter, v any, status int) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	enc := json.NewEncoder(w)
-	enc.Encode(v)
+	return enc.Encode(v)
 }

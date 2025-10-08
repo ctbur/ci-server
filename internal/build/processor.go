@@ -151,7 +151,15 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 		}
 
 		// Update start time for build
-		p.Builds.MarkBuildStarted(ctx, bld.ID, time.Now(), pid, bld.CacheID)
+		err = p.Builds.MarkBuildStarted(ctx, bld.ID, time.Now(), pid, bld.CacheID)
+		if err != nil {
+			log.ErrorContext(
+				ctx,
+				"failed to mark build as started",
+				slog.Uint64("build_id", bld.ID),
+				slog.Any("error", err),
+			)
+		}
 		log.InfoContext(
 			ctx, "Started build",
 			slog.Uint64("build_id", bld.ID),

@@ -38,17 +38,18 @@ type BuilderParams struct {
 // Create a new builder process by starting the same executable as the current
 // process, but with the "builder" argument.
 func startBuilder(params BuilderParams) (int, error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get executable path: %w", err)
-	}
-
 	paramsJSON, err := json.Marshal(&params)
 	if err != nil {
 		return 0, fmt.Errorf("failed to build params to JSON: %w", err)
 	}
 
-	builderCmd := exec.Command(exe, "builder")
+	exe, err := os.Executable()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get executable path: %w", err)
+	}
+
+	// sec: exe is not user defined
+	builderCmd := exec.Command(exe, "builder") // #nosec G204
 	builderCmd.Env = []string{
 		// Pass along PATH variable
 		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
@@ -64,7 +65,8 @@ func startBuilder(params BuilderParams) (int, error) {
 	}
 
 	logFile := getBuilderLogFile(params.DataDir, params.BuildID)
-	outFile, _ := os.OpenFile(logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o644)
+	// sec: Path is from a trusted user
+	outFile, _ := os.OpenFile(logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o600) // #nosec G304
 	builderCmd.Stdout = outFile
 	builderCmd.Stderr = outFile
 
@@ -94,7 +96,7 @@ func RunBuilder() error {
 
 	// Write exit code to file
 	exitCodeFile := getExitCodeFile(params.DataDir, params.BuildID)
-	if err := os.WriteFile(exitCodeFile, []byte(strconv.Itoa(exitCode)), 0o644); err != nil {
+	if err := os.WriteFile(exitCodeFile, []byte(strconv.Itoa(exitCode)), 0o600); err != nil {
 		return fmt.Errorf("failed to write exit code to file '%s': %w", exitCodeFile, err)
 	}
 	slog.Info("Wrote exit code to file", slog.Int("exit_code", exitCode))
@@ -119,8 +121,9 @@ func isBuilderRunning(pid int, buildID uint64) bool {
 	}
 
 	// Check if the BUILD_ID environment variable matches
-	cmdlinePath := fmt.Sprintf("/proc/%d/environ", pid)
-	data, err := os.ReadFile(cmdlinePath)
+	envPath := fmt.Sprintf("/proc/%d/environ", pid)
+	// sec: Path is restricted
+	data, err := os.ReadFile(envPath) // #nosec G304
 	if err != nil {
 		return false
 	}
@@ -166,7 +169,8 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 
 	// Run build command
 	logFilePath := getLogFile(p.DataDir, p.BuildID)
-	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	// sec: Path is from a trusted user
+	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) // #nosec G304
 	if err != nil {
 		return 0, fmt.Errorf("failed to open log file: %w", err)
 	}
@@ -209,25 +213,27 @@ func copyDirs(src, dst string) error {
 	return nil
 }
 
-func checkout(owner, name, commitSHA, targetDir string) error {
-	initCmd := exec.Command("git", "-C", targetDir, "init", "-q")
+func checkout(owner, name, commitSHA, buildDir string) error {
+	initCmd := exec.Command("git", "-C", buildDir, "init", "-q")
 	if err := initCmd.Run(); err != nil {
-		return fmt.Errorf("failed to init repo at '%s': %w", targetDir, err)
+		return fmt.Errorf("failed to init repo at '%s': %w", buildDir, err)
 	}
 
 	cloneURL := fmt.Sprintf("https://github.com/%s/%s.git", owner, name)
-	cloneCmd := exec.Command("git", "-C", targetDir, "fetch", "--depth=1", cloneURL, commitSHA)
+	// sec: Path comes from a trusted user, other args are not security critical
+	cloneCmd := exec.Command("git", "-C", buildDir, "fetch", "--depth=1", cloneURL, commitSHA) // #nosec G204
 	if err := cloneCmd.Run(); err != nil {
 		return fmt.Errorf("failed to fetch repo at '%s': %w", cloneURL, err)
 	}
 
 	// Check out repo files to build dir
+	// sec: Path comes from a trusted user, other args are not security critical
 	checkoutCmd := exec.Command(
 		"git",
-		"--git-dir", fmt.Sprintf("%s/.git", targetDir),
-		"--work-tree", targetDir,
+		"--git-dir", fmt.Sprintf("%s/.git", buildDir),
+		"--work-tree", buildDir,
 		"checkout", commitSHA, "--", ".",
-	)
+	) // #nosec G204
 	if err := checkoutCmd.Run(); err != nil {
 		return fmt.Errorf("failed to checkout commit for '%s': %w", cloneURL, err)
 	}
@@ -253,7 +259,8 @@ func buildSandboxedCommand(
 		"--chdir", absBuildDir,
 	}
 	cmd = append(bwrapSandbox, cmd...)
-	sandboxCmd := exec.Command(cmd[0], cmd[1:]...)
+	// sec: Command is from a trusted user
+	sandboxCmd := exec.Command(cmd[0], cmd[1:]...) // #nosec G204
 
 	// Add secrets and env vars to the environment
 	var cmdEnv []string
@@ -342,8 +349,8 @@ func runWithLogs(
 	}
 
 	// Wait for log readers to finish
-	outWriter.Close()
-	errWriter.Close()
+	_ = outWriter.Close()
+	_ = errWriter.Close()
 	logReaderWaitGroup.Wait()
 	close(logChan)
 

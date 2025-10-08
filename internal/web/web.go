@@ -45,6 +45,11 @@ func RunServer(log *slog.Logger, handler http.Handler, port int) error {
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
 		Handler: handler,
+
+		ReadTimeout:       1 * time.Second,
+		WriteTimeout:      1 * time.Second,
+		IdleTimeout:       30 * time.Second,
+		ReadHeaderTimeout: 2 * time.Second,
 	}
 
 	serverErrChan := make(chan error, 1)

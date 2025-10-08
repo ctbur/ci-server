@@ -72,8 +72,8 @@ func ApplyMigrations(log *slog.Logger, ctx context.Context, pool *pgxpool.Pool, 
 		}
 
 		path := filepath.Join(migrationsDir, file.Name())
-
-		sql, err := os.ReadFile(path)
+		// sec: Path is from a trusted user
+		sql, err := os.ReadFile(path) // #nosec: G304
 		if err != nil {
 			return fmt.Errorf("failed to read migration file '%s': %v\n", path, err)
 		}
@@ -99,7 +99,7 @@ func ApplyMigrations(log *slog.Logger, ctx context.Context, pool *pgxpool.Pool, 
 	return nil
 }
 
-func InitDatabase(ctx context.Context, pgStore *PGStore, cfg *config.Config) error {
+func InitRepositories(ctx context.Context, pgStore *PGStore, cfg *config.Config) error {
 	for _, repoCfg := range cfg.Repos {
 		err := pgStore.CreateRepoIfNotExists(
 			ctx,

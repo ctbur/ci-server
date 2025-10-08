@@ -86,7 +86,8 @@ func runServer() error {
 	}
 
 	htpasswdFile := path.Join(*configDir, "users.htpasswd")
-	htpasswd, err := os.ReadFile(htpasswdFile)
+	// sec: Path is from a trusted user
+	htpasswd, err := os.ReadFile(htpasswdFile) // #nosec G304
 	if err != nil {
 		return fmt.Errorf("failed to load users.htpasswd: %v", err)
 	}
@@ -103,13 +104,16 @@ func runServer() error {
 	}
 
 	pgStore := store.NewPGStore(pool)
-	store.InitDatabase(ctx, &pgStore, cfg)
+	err = store.InitRepositories(ctx, &pgStore, cfg)
+	if err != nil {
+		return fmt.Errorf("failed to init repositories: %w", err)
+	}
 
 	dataDir := build.DataDir{
 		RootDir: cfg.DataDir,
 	}
 	if err := dataDir.CreateRootDirs(); err != nil {
-		return fmt.Errorf("Failed to create dirs under %s: %w", cfg.DataDir, err)
+		return fmt.Errorf("failed to create dirs under %s: %w", cfg.DataDir, err)
 	}
 
 	processor := build.Processor{
@@ -124,7 +128,11 @@ func runServer() error {
 	}
 	staticFileDir := path.Join(*libDir, "ui/static/")
 	handler := web.Handler(cfg, userAuth, pgStore, logStore, tmpl, staticFileDir)
-	web.RunServer(slog.Default(), handler, 8000)
+	err = web.RunServer(slog.Default(), handler, 8000)
+	if err != nil {
+		return fmt.Errorf("error during web server execution: %w", err)
+	}
+
 	return nil
 }
 

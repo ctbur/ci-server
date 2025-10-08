@@ -30,7 +30,7 @@ func StartTestDatabase(
 				_ = postgres.Stop()
 			}
 			if tempDir != "" {
-				os.RemoveAll(tempDir)
+				_ = os.RemoveAll(tempDir)
 			}
 		}
 	}()
@@ -81,7 +81,7 @@ func StartTestDatabase(
 	return nil, pool, func() {
 		pool.Close()
 		_ = postgres.Stop()
-		os.RemoveAll(tempDir)
+		_ = os.RemoveAll(tempDir)
 	}
 }
 
@@ -96,7 +96,8 @@ func getFreePort() (uint32, error) {
 		return 0, err
 	}
 	defer l.Close()
-	return uint32(l.Addr().(*net.TCPAddr).Port), nil
+	port := l.Addr().(*net.TCPAddr).Port
+	return uint32(port), nil // #nosec G115 -- port number cannot cause overflow
 }
 
 type TestLogWriter struct {

@@ -31,7 +31,8 @@ type LogEntry struct {
 func (s LogStore) GetLogs(ctx context.Context, buildID uint64) ([]LogEntry, error) {
 	logFile := path.Join(s.LogDir, fmt.Sprintf("%d.jsonl", buildID))
 
-	file, err := os.Open(logFile)
+	// sec: Path is from a trusted user
+	file, err := os.Open(logFile) // #nosec G304
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil // Return no logs

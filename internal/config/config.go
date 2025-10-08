@@ -75,7 +75,7 @@ func Load(secretKey, configFile string) (*Config, error) {
 }
 
 func (c *Config) GetRepoConfig(owner, name string) *RepoConfig {
-	for idx, _ := range c.Repos {
+	for idx := range c.Repos {
 		if c.Repos[idx].Name == name && c.Repos[idx].Owner == owner {
 			return &c.Repos[idx]
 		}
