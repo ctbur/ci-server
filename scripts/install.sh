@@ -42,7 +42,7 @@ rsync -e "ssh ${SSH_OPTS}" -avz "./migrations" "./ui" "${REMOTE_HOST}:${BASE_DIR
 echo ""
 
 echo "Restarting service..."
-ssh ${SSH_OPTS} -t "${REMOTE_HOST}" "systemctl restart ci.service"
+ssh ${SSH_OPTS} "${REMOTE_HOST}" "systemctl restart ci.service"
 echo ""
 
 echo "Done"
