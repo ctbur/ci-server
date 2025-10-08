@@ -2,6 +2,7 @@ package build
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -143,7 +144,7 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 	if p.CacheID != nil {
 		log.Info("Copying cache", slog.Uint64("cache_id", *p.CacheID))
 		cacheDir := getBuildDir(p.DataDir, *p.CacheID)
-		if err := os.CopyFS(buildDir, os.DirFS(cacheDir)); err != nil {
+		if err := copyDirs(cacheDir, buildDir); err != nil {
 			return 0, fmt.Errorf(
 				"failed to copy repo cache dir '%s' to build dir '%s': %w",
 				cacheDir, buildDir, err,
@@ -192,16 +193,30 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 	return exitCode, nil
 }
 
+func copyDirs(src, dst string) error {
+	// Use cp -a for archive copy (preserving most (all?) attributes and symlinks)
+	cpCmd := exec.Command("cp", "-a", src, dst)
+
+	out := &bytes.Buffer{}
+	cpCmd.Stdout = out
+	cpCmd.Stderr = out
+
+	if err := cpCmd.Run(); err != nil {
+		return fmt.Errorf("failed to copy dirs: w%\n\ncp output:\n%s", err, out)
+	}
+	return nil
+}
+
 func checkout(owner, name, commitSHA, targetDir string) error {
 	initCmd := exec.Command("git", "-C", targetDir, "init", "-q")
 	if err := initCmd.Run(); err != nil {
-		return fmt.Errorf("failed to init repo at '%s': %v", targetDir, err)
+		return fmt.Errorf("failed to init repo at '%s': %w", targetDir, err)
 	}
 
 	cloneURL := fmt.Sprintf("https://github.com/%s/%s.git", owner, name)
 	cloneCmd := exec.Command("git", "-C", targetDir, "fetch", "--depth=1", cloneURL, commitSHA)
 	if err := cloneCmd.Run(); err != nil {
-		return fmt.Errorf("failed to fetch repo at '%s': %v", cloneURL, err)
+		return fmt.Errorf("failed to fetch repo at '%s': %w", cloneURL, err)
 	}
 
 	// Check out repo files to build dir
@@ -212,7 +227,7 @@ func checkout(owner, name, commitSHA, targetDir string) error {
 		"checkout", commitSHA, "--", ".",
 	)
 	if err := checkoutCmd.Run(); err != nil {
-		return fmt.Errorf("failed to checkout commit for '%s': %v", cloneURL, err)
+		return fmt.Errorf("failed to checkout commit for '%s': %w", cloneURL, err)
 	}
 
 	return nil
