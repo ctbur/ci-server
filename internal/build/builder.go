@@ -175,6 +175,7 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	log.Info("Finished build command", slog.Int("exit_code", exitCode))
 
 	// Run deploy command - only if it exists and the build command was successful
 	if exitCode != 0 || len(p.DeployCmd) == 0 {
@@ -186,6 +187,7 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	log.Info("Finished deploy command", slog.Int("exit_code", exitCode))
 
 	return exitCode, nil
 }
