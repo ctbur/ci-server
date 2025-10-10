@@ -137,7 +137,7 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 		// TODO: limit builds by number or resource usage
 
 		// Don't run deploy if not on default branch
-		runDeploy := b.Ref != fmt.Sprintf("refs/heads/%s", repo.DefaultBranch)
+		runDeploy := b.Ref == fmt.Sprintf("refs/heads/%s", repo.DefaultBranch)
 		pid, err := p.Builder.Start(*repo, b, runDeploy)
 		if err != nil {
 			log.ErrorContext(

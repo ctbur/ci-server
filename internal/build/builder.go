@@ -74,6 +74,9 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 
 	// Checkout
 	checkoutDir := path.Join(absBuildDir, p.Repo.Owner, p.Repo.Name)
+	if err := os.MkdirAll(checkoutDir, 0o700); err != nil {
+		return 0, fmt.Errorf("failed to create build dir: %w", err)
+	}
 	err = checkout(p.Repo.Owner, p.Repo.Name, p.Build.CommitSHA, checkoutDir)
 	if err != nil {
 		return 0, err
@@ -99,12 +102,19 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 	log.Info("Finished build command", slog.Int("exit_code", exitCode))
 
 	// Decide whether to run deploy command
-	// Don't run deploy if not requested, or if build failed
-	if !p.RunDeploy || exitCode != 0 {
+	// Don't run deploy if not requested
+	if !p.RunDeploy {
+		slog.Info("No deploy is requested")
+		return exitCode, nil
+	}
+	// Don't run deploy if build failed
+	if exitCode != 0 {
+		slog.Info("Deploy is requested but the build failed")
 		return exitCode, nil
 	}
 	// Don't run deploy if there is no command
 	if len(p.Repo.DeployCmd) == 0 {
+		slog.Info("Deploy is requested but no deploy command is configured")
 		return 0, nil
 	}
 
