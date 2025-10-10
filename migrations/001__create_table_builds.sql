@@ -13,7 +13,7 @@ CREATE TABLE builds (
     number BIGINT NOT NULL,
     link VARCHAR(255) NOT NULL,
     ref VARCHAR(255) NOT NULL,
-    commit_sha VARCHAR(255) NOT NULL,
+    commit_sha VARCHAR(40) NOT NULL,
     message TEXT NOT NULL,
     author VARCHAR(255) NOT NULL,
 
