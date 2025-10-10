@@ -106,6 +106,16 @@ func TestGitHubWebhook(t *testing.T) {
 			wantBuild:     nil,
 		},
 		{
+			desc:          "invalid commit SHA",
+			header:        headerSet(fixHeader, "X-Hub-Signature-256", "sha256=bd0acfed478b06f17562fac13112e8c6337c413b948c49aac7de81d911733bfe"),
+			payload:       strings.ReplaceAll(fixPayload, "c5ec2129a2a892156c8c97220e6059b9d47b7217", "not a commit SHA"),
+			repoOwner:     "ctbur",
+			repoName:      "ctbur.net",
+			webhookSecret: &fixWebhookSecret,
+			wantHTTPCode:  http.StatusBadRequest,
+			wantBuild:     nil,
+		},
+		{
 			desc:          "missing signature",
 			header:        headerDel(fixHeader, "X-Hub-Signature-256"),
 			payload:       fixPayload,

@@ -51,6 +51,12 @@ func handleManual(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 			Author:    payload.Author,
 		}
 
+		err = sanitizeBuild(&build)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Invalid build: %v", err), http.StatusBadRequest)
+			return
+		}
+
 		buildID, err := b.CreateBuild(ctx, payload.Owner, payload.Name, build, time.Now())
 		if err != nil {
 			http.Error(w, "Failed to create build", http.StatusInternalServerError)

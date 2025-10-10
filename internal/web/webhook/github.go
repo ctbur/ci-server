@@ -104,6 +104,12 @@ func handleGitHub(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 			Author:    event.HeadCommit.Author.Username,
 		}
 
+		err = sanitizeBuild(&build)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Invalid build: %v", err), http.StatusBadRequest)
+			return
+		}
+
 		buildID, err := b.CreateBuild(ctx, owner, name, build, time.Now())
 		if err != nil {
 			http.Error(w, "Failed to create build", http.StatusInternalServerError)

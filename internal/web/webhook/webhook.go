@@ -56,21 +56,22 @@ var hexRegex = regexp.MustCompile("^[a-fA-F0-9]*$")
 
 // sanitizeBuild sanitizes b to reduce security risks, and returns
 // validation errors when the input is not deemed sanitizable.
-func sanitizeBuild(b *store.BuildMeta) *ValidationError {
+func sanitizeBuild(b *store.BuildMeta) error {
 	var validationErrors []string
 
 	// Ref
 	if b.Ref == "" {
-		validationErrors = append(validationErrors, "Ref (branch/tag reference) is required")
+		validationErrors = append(validationErrors, "Ref is required")
 	}
 	if !strings.HasPrefix(b.Ref, "refs/") {
-		validationErrors = append(validationErrors, "Ref needs to start with 'refs/'")
+		validationErrors = append(validationErrors, "Ref must start with 'refs/'")
 	}
 	if len(b.Ref) > 255 {
 		validationErrors = append(validationErrors, "Ref must be fewer than 255 characters")
 	}
 
 	// Commit SHA
+	b.CommitSHA = strings.ToLower(b.CommitSHA)
 	if b.CommitSHA == "" {
 		validationErrors = append(validationErrors, "Commit SHA is required")
 	}
@@ -96,7 +97,7 @@ func sanitizeBuild(b *store.BuildMeta) *ValidationError {
 
 	// Link
 	if b.Link != "" && !strings.HasPrefix(b.Link, "https://") {
-		validationErrors = append(validationErrors, "Link needs to start with 'https://'")
+		validationErrors = append(validationErrors, "Link must start with 'https://'")
 	}
 	if len(b.Link) > 255 {
 		validationErrors = append(validationErrors, "Link must be fewer than 256 characters")
