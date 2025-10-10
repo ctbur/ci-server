@@ -100,7 +100,8 @@ func removeAll(path string) error {
 	// Try to give write permissions to every file
 	_ = filepath.Walk(path, func(name string, info os.FileInfo, err error) error {
 		if err == nil {
-			_ = os.Chmod(name, 0600)
+			// sec: 0700 is required to ensure deletion
+			_ = os.Chmod(name, 0700) // #nosec G302
 		}
 		return nil
 	})
