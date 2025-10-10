@@ -116,11 +116,7 @@ func runServer() error {
 		return fmt.Errorf("failed to create dirs under %s: %w", cfg.DataDir, err)
 	}
 
-	processor := build.Processor{
-		Builds: pgStore,
-		Dir:    dataDir,
-		Cfg:    cfg,
-	}
+	processor := build.NewProcessor(cfg.Repos, dataDir, pgStore)
 	go processor.Run(slog.Default(), ctx)
 
 	logStore := store.LogStore{

@@ -125,7 +125,7 @@ func (s PGStore) CreateBuild(
 	return newID, err
 }
 
-func (s PGStore) MarkBuildStarted(
+func (s PGStore) StartBuild(
 	ctx context.Context,
 	buildID uint64,
 	started time.Time,
@@ -164,7 +164,7 @@ func (s PGStore) MarkBuildStarted(
 	return tx.Commit(ctx)
 }
 
-func (s PGStore) MarkBuildFinished(
+func (s PGStore) FinishBuild(
 	ctx context.Context,
 	buildID uint64,
 	finished time.Time,

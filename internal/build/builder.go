@@ -11,71 +11,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strconv"
-	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/store"
 )
-
-type BuilderParams struct {
-	DataDir       string            `json:"data_dir"`
-	BuildID       uint64            `json:"build_id"`
-	CacheID       *uint64           `json:"cache_id"`
-	RepoOwner     string            `json:"repo_owner"`
-	RepoName      string            `json:"repo_name"`
-	CommitSHA     string            `json:"commit_sha"`
-	EnvVars       map[string]string `json:"env_vars"`
-	BuildCmd      []string          `json:"build_cmd"`
-	BuildSecrets  map[string]string `json:"build_secrets"`
-	DeployCmd     []string          `json:"deploy_cmd"`
-	DeploySecrets map[string]string `json:"deploy_secrets"`
-}
-
-// Create a new builder process by starting the same executable as the current
-// process, but with the "builder" argument.
-func startBuilder(params BuilderParams) (int, error) {
-	paramsJSON, err := json.Marshal(&params)
-	if err != nil {
-		return 0, fmt.Errorf("failed to build params to JSON: %w", err)
-	}
-
-	exe, err := os.Executable()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get executable path: %w", err)
-	}
-
-	// sec: exe is not user defined
-	builderCmd := exec.Command(exe, "builder") // #nosec G204
-	builderCmd.Env = []string{
-		// Pass along PATH variable
-		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
-		// Add builder params to env var
-		fmt.Sprintf("CI_BUILDER_PARAMS=%s", paramsJSON),
-		// Set build ID separately as it helps with identification of the builder process
-		fmt.Sprintf("CI_BUILDER_BUILD_ID=%d", params.BuildID),
-	}
-
-	// Keep builder running independently of server
-	builderCmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
-	}
-
-	logFile := getBuilderLogFile(params.DataDir, params.BuildID)
-	// sec: Path is from a trusted user
-	outFile, _ := os.OpenFile(logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o600) // #nosec G304
-	builderCmd.Stdout = outFile
-	builderCmd.Stderr = outFile
-
-	if err := builderCmd.Start(); err != nil {
-		return 0, fmt.Errorf("failed to start builder process: %w", err)
-	}
-
-	return builderCmd.Process.Pid, nil
-}
 
 func RunBuilder() error {
 	paramsJSON := os.Getenv("CI_BUILDER_PARAMS")
@@ -83,19 +24,19 @@ func RunBuilder() error {
 		return errors.New("missing CI_BUILDER_PARAMS for builder")
 	}
 
-	var params BuilderParams
-	if err := json.Unmarshal([]byte(paramsJSON), &params); err != nil {
+	var p BuilderParams
+	if err := json.Unmarshal([]byte(paramsJSON), &p); err != nil {
 		return fmt.Errorf("failed to unmarshal build params JSON '%s': %w", paramsJSON, err)
 	}
 
 	// Run the build
-	exitCode, err := build(*slog.Default(), params)
+	exitCode, err := build(*slog.Default(), p)
 	if err != nil {
 		return fmt.Errorf("builder failed: %w", err)
 	}
 
 	// Write exit code to file
-	exitCodeFile := getExitCodeFile(params.DataDir, params.BuildID)
+	exitCodeFile := getExitCodeFile(p.DataDir, p.Build.ID)
 	if err := os.WriteFile(exitCodeFile, []byte(strconv.Itoa(exitCode)), 0o600); err != nil {
 		return fmt.Errorf("failed to write exit code to file '%s': %w", exitCodeFile, err)
 	}
@@ -104,45 +45,12 @@ func RunBuilder() error {
 	return nil
 }
 
-// isBuilderRunning checks if a builder process is still running. The process is
-// identified using PID and build ID in env. This is to protect against PID
-// reuse.
-func isBuilderRunning(pid int, buildID uint64) bool {
-	// Check if the process is running
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-
-	// Check if process is running by sending signal 0 - necessary on Unix
-	err = process.Signal(syscall.Signal(0))
-	if err != nil {
-		return false
-	}
-
-	// Check if the BUILD_ID environment variable matches
-	envPath := fmt.Sprintf("/proc/%d/environ", pid)
-	// sec: Path is restricted
-	data, err := os.ReadFile(envPath) // #nosec G304
-	if err != nil {
-		return false
-	}
-
-	envVars := strings.Split(string(data), "\000")
-	buildEnvVar := fmt.Sprintf("CI_BUILDER_BUILD_ID=%d", buildID)
-	if !slices.Contains(envVars, buildEnvVar) {
-		return false
-	}
-
-	return true
-}
-
 func build(log slog.Logger, p BuilderParams) (int, error) {
-	buildDir := getBuildDir(p.DataDir, p.BuildID)
+	buildDir := getBuildDir(p.DataDir, p.Build.ID)
 
-	if p.CacheID != nil {
-		log.Info("Copying cache", slog.Uint64("cache_id", *p.CacheID))
-		cacheDir := getBuildDir(p.DataDir, *p.CacheID)
+	if p.Build.CacheID != nil {
+		log.Info("Copying cache", slog.Uint64("cache_id", *p.Build.CacheID))
+		cacheDir := getBuildDir(p.DataDir, *p.Build.CacheID)
 		// Copying will create the build dir
 		if err := copyDirs(cacheDir, buildDir); err != nil {
 			return 0, fmt.Errorf(
@@ -157,7 +65,8 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 		}
 	}
 
-	if err := checkout(p.RepoOwner, p.RepoName, p.CommitSHA, buildDir); err != nil {
+	err := checkout(p.Repo.Owner, p.Repo.Name, p.Build.CommitSHA, buildDir)
+	if err != nil {
 		return 0, err
 	}
 
@@ -168,7 +77,7 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 	}
 
 	// Run build command
-	logFilePath := getLogFile(p.DataDir, p.BuildID)
+	logFilePath := getLogFile(p.DataDir, p.Build.ID)
 	// sec: Path is from a trusted user
 	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) // #nosec G304
 	if err != nil {
@@ -176,20 +85,31 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 	}
 	defer logFile.Close()
 
-	log.Info("Starting build...", slog.Any("command", p.BuildCmd))
-	buildCmd := buildSandboxedCommand(absBuildDir, p.BuildCmd, p.EnvVars, p.BuildSecrets)
+	log.Info("Starting build...", slog.Any("command", p.Repo.BuildCmd))
+	buildCmd := buildSandboxedCommand(
+		absBuildDir, p.Repo.BuildCmd, p.Repo.EnvVars, p.Repo.BuildSecrets,
+	)
 	exitCode, err := runWithLogs(buildCmd, logFile)
 	if err != nil {
 		return 0, err
 	}
 	log.Info("Finished build command", slog.Int("exit_code", exitCode))
 
-	// Run deploy command - only if it exists and the build command was successful
-	if exitCode != 0 || len(p.DeployCmd) == 0 {
+	// Decide whether to run deploy command
+	// Don't run deploy if not requested, or if build failed
+	if !p.RunDeploy || exitCode != 0 {
 		return exitCode, nil
 	}
-	log.Info("Starting deploy...", slog.Any("command", p.DeployCmd))
-	deployCmd := buildSandboxedCommand(absBuildDir, p.DeployCmd, p.EnvVars, p.DeploySecrets)
+	// Don't run deploy if there is no command
+	if len(p.Repo.DeployCmd) == 0 {
+		return 0, nil
+	}
+
+	// Run deploy command
+	log.Info("Starting deploy...", slog.Any("command", p.Repo.DeployCmd))
+	deployCmd := buildSandboxedCommand(
+		absBuildDir, p.Repo.DeployCmd, p.Repo.EnvVars, p.Repo.DeploySecrets,
+	)
 	exitCode, err = runWithLogs(deployCmd, logFile)
 	if err != nil {
 		return 0, err

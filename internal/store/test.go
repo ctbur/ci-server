@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"os"
 	"path"
 	"testing"
 
+	"github.com/ctbur/ci-server/v2/internal/test"
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -71,7 +71,7 @@ func StartTestDatabase(
 		return fmt.Errorf("failed to connect to database: %v", err), nil, nil
 	}
 
-	log := loggerFromTesting(t)
+	log := test.Logger(t)
 	migrationsDir := path.Join(repoDir, "migrations")
 	err = ApplyMigrations(log, ctx, pool, migrationsDir)
 	if err != nil {
@@ -98,22 +98,4 @@ func getFreePort() (uint32, error) {
 	defer l.Close()
 	port := l.Addr().(*net.TCPAddr).Port
 	return uint32(port), nil // #nosec G115 -- port number cannot cause overflow
-}
-
-type TestLogWriter struct {
-	t *testing.T
-}
-
-func (w *TestLogWriter) Write(p []byte) (n int, err error) {
-	w.t.Logf("%s", p)
-	return len(p), nil
-}
-
-func loggerFromTesting(t *testing.T) *slog.Logger {
-	handler := slog.NewTextHandler(&TestLogWriter{t}, &slog.HandlerOptions{
-		Level:       slog.LevelDebug,
-		AddSource:   false,
-		ReplaceAttr: nil,
-	})
-	return slog.New(handler)
 }

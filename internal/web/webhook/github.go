@@ -57,7 +57,7 @@ func handleGitHub(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 			return
 		}
 
-		repoCfg := cfg.GetRepoConfig(owner, name)
+		repoCfg := cfg.Repos.Get(owner, name)
 		if repoCfg == nil {
 			errMsg := fmt.Sprintf("Repository %s/%s not configured", owner, name)
 			http.Error(w, errMsg, http.StatusNotFound)

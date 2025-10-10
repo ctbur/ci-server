@@ -125,6 +125,10 @@ func (d *DataDir) CreateRootDirs() error {
 	return nil
 }
 
+func (d *DataDir) GetRootDir() string {
+	return d.RootDir
+}
+
 func getLogFile(dataDir string, buildID uint64) string {
 	return path.Join(dataDir, "build-logs", fmt.Sprintf("%d.jsonl", buildID))
 }

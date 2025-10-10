@@ -37,7 +37,7 @@ func handleManual(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 			return
 		}
 
-		repoCfg := cfg.GetRepoConfig(payload.Owner, payload.Name)
+		repoCfg := cfg.Repos.Get(payload.Owner, payload.Name)
 		if repoCfg == nil {
 			http.Error(w, "Repository not configured", http.StatusNotFound)
 			return

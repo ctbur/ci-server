@@ -143,11 +143,11 @@ func TestBuildStore(t *testing.T) {
 
 	t.Run("Start and finish first build of each repo", func(t *testing.T) {
 		// Finish r1b1 and cache results
-		s.MarkBuildStarted(ctx, 1, time.UnixMilli(1011), 10011, nil)
-		s.MarkBuildFinished(ctx, 1, time.UnixMilli(2011), BuildResultSuccess, true)
+		s.StartBuild(ctx, 1, time.UnixMilli(1011), 10011, nil)
+		s.FinishBuild(ctx, 1, time.UnixMilli(2011), BuildResultSuccess, true)
 		// Finish r2b1 without caching results
-		s.MarkBuildStarted(ctx, 3, time.UnixMilli(1021), 10021, nil)
-		s.MarkBuildFinished(ctx, 3, time.UnixMilli(2021), BuildResultSuccess, false)
+		s.StartBuild(ctx, 3, time.UnixMilli(1021), 10021, nil)
+		s.FinishBuild(ctx, 3, time.UnixMilli(2021), BuildResultSuccess, false)
 
 		pendingBuilds, err := s.GetPendingBuilds(ctx)
 		assert.NoError(t, err, "Failed to get pending builds")
@@ -177,9 +177,9 @@ func TestBuildStore(t *testing.T) {
 	t.Run("Start second build of each repo", func(t *testing.T) {
 		// Start r1b2 with cache
 		cacheID := uint64(1)
-		s.MarkBuildStarted(ctx, 2, time.UnixMilli(1012), 10012, &cacheID)
+		s.StartBuild(ctx, 2, time.UnixMilli(1012), 10012, &cacheID)
 		// Start r1b2 without cache
-		s.MarkBuildStarted(ctx, 4, time.UnixMilli(1022), 10022, nil)
+		s.StartBuild(ctx, 4, time.UnixMilli(1022), 10022, nil)
 
 		pendingBuilds, err := s.GetPendingBuilds(ctx)
 		assert.NoError(t, err, "Failed to get pending builds")

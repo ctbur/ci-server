@@ -7,19 +7,21 @@ import (
 )
 
 type Config struct {
-	DataDir string       `toml:"data_dir"`
-	Repos   []RepoConfig `toml:"repos"`
+	DataDir string      `toml:"data_dir"`
+	Repos   RepoConfigs `toml:"repos"`
 }
+
+type RepoConfigs []RepoConfig
 
 type RepoConfig struct {
 	Owner         string            `toml:"owner"`
 	Name          string            `toml:"name"`
 	DefaultBranch string            `toml:"default_branch"`
 	EnvVars       map[string]string `toml:"env_vars"`
-	BuildCommand  []string          `toml:"build_command"`
+	BuildCmd      []string          `toml:"build_command"`
 	// Name mapped to "encrypted_build_secrets" - we decrypt it as part of loading the config
 	BuildSecrets  map[string]string `toml:"encrypted_build_secrets"`
-	DeployCommand []string          `toml:"deploy_command"`
+	DeployCmd []string          `toml:"deploy_command"`
 	// Name mapped to "encrypted_deploy_secrets" - we decrypt it as part of loading the config
 	DeploySecrets map[string]string `toml:"encrypted_deploy_secrets"`
 	// Name mapped to "encrypted_webhook_secret" - we decrypt it as part of loading the config
@@ -74,10 +76,10 @@ func Load(secretKey, configFile string) (*Config, error) {
 	return &cfg, nil
 }
 
-func (c *Config) GetRepoConfig(owner, name string) *RepoConfig {
-	for idx := range c.Repos {
-		if c.Repos[idx].Name == name && c.Repos[idx].Owner == owner {
-			return &c.Repos[idx]
+func (r RepoConfigs) Get(owner, name string) *RepoConfig {
+	for idx := range r {
+		if r[idx].Name == name && r[idx].Owner == owner {
+			return &r[idx]
 		}
 	}
 	return nil
