@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -65,15 +66,17 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 		}
 	}
 
-	err := checkout(p.Repo.Owner, p.Repo.Name, p.Build.CommitSHA, buildDir)
-	if err != nil {
-		return 0, err
-	}
-
 	// Get absoluate build dir path for sandbox parameters
 	absBuildDir, err := filepath.Abs(buildDir)
 	if err != nil {
 		return 0, fmt.Errorf("failed to resolve build dir path: %w", err)
+	}
+
+	// Checkout
+	checkoutDir := path.Join(absBuildDir, p.Repo.Owner, p.Repo.Name)
+	err = checkout(p.Repo.Owner, p.Repo.Name, p.Build.CommitSHA, checkoutDir)
+	if err != nil {
+		return 0, err
 	}
 
 	// Run build command
@@ -87,7 +90,7 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 
 	log.Info("Starting build...", slog.Any("command", p.Repo.BuildCmd))
 	buildCmd := buildSandboxedCommand(
-		absBuildDir, p.Repo.BuildCmd, p.Repo.EnvVars, p.Repo.BuildSecrets,
+		absBuildDir, checkoutDir, p.Repo.BuildCmd, p.Repo.EnvVars, p.Repo.BuildSecrets,
 	)
 	exitCode, err := runWithLogs(buildCmd, logFile)
 	if err != nil {
@@ -108,7 +111,7 @@ func build(log slog.Logger, p BuilderParams) (int, error) {
 	// Run deploy command
 	log.Info("Starting deploy...", slog.Any("command", p.Repo.DeployCmd))
 	deployCmd := buildSandboxedCommand(
-		absBuildDir, p.Repo.DeployCmd, p.Repo.EnvVars, p.Repo.DeploySecrets,
+		absBuildDir, checkoutDir, p.Repo.DeployCmd, p.Repo.EnvVars, p.Repo.DeploySecrets,
 	)
 	exitCode, err = runWithLogs(deployCmd, logFile)
 	if err != nil {
@@ -133,15 +136,15 @@ func copyDirs(src, dst string) error {
 	return nil
 }
 
-func checkout(owner, name, commitSHA, buildDir string) error {
-	initCmd := exec.Command("git", "-C", buildDir, "init", "-q")
+func checkout(owner, name, commitSHA, targetDir string) error {
+	initCmd := exec.Command("git", "-C", targetDir, "init", "-q")
 	if err := initCmd.Run(); err != nil {
-		return fmt.Errorf("failed to init repo at '%s': %w", buildDir, err)
+		return fmt.Errorf("failed to init repo at '%s': %w", targetDir, err)
 	}
 
 	cloneURL := fmt.Sprintf("https://github.com/%s/%s.git", owner, name)
 	// sec: Path comes from a trusted user, other args are not security critical
-	cloneCmd := exec.Command("git", "-C", buildDir, "fetch", "--depth=1", cloneURL, commitSHA) // #nosec G204
+	cloneCmd := exec.Command("git", "-C", targetDir, "fetch", "--depth=1", cloneURL, commitSHA) // #nosec G204
 	if err := cloneCmd.Run(); err != nil {
 		return fmt.Errorf("failed to fetch repo at '%s': %w", cloneURL, err)
 	}
@@ -150,8 +153,8 @@ func checkout(owner, name, commitSHA, buildDir string) error {
 	// sec: Path comes from a trusted user, other args are not security critical
 	checkoutCmd := exec.Command(
 		"git",
-		"--git-dir", fmt.Sprintf("%s/.git", buildDir),
-		"--work-tree", buildDir,
+		"--git-dir", fmt.Sprintf("%s/.git", targetDir),
+		"--work-tree", targetDir,
 		"checkout", commitSHA, "--", ".",
 	) // #nosec G204
 	if err := checkoutCmd.Run(); err != nil {
@@ -163,6 +166,7 @@ func checkout(owner, name, commitSHA, buildDir string) error {
 
 func buildSandboxedCommand(
 	absBuildDir string,
+	checkoutDir string,
 	cmd []string,
 	env map[string]string,
 	secrets map[string]string,
@@ -176,7 +180,8 @@ func buildSandboxedCommand(
 		"--dev", "/dev",
 		"--tmpfs", "/tmp",
 		"--bind", absBuildDir, absBuildDir,
-		"--chdir", absBuildDir,
+		// Run all commands in the dir where we check out the repo
+		"--chdir", checkoutDir,
 	}
 	cmd = append(bwrapSandbox, cmd...)
 	// sec: Command is from a trusted user
@@ -196,6 +201,8 @@ func buildSandboxedCommand(
 		"CI=true",
 		// Pass along PATH variable
 		fmt.Sprintf("PATH=%s", os.Getenv("PATH")),
+		// Set build dir as HOME
+		fmt.Sprintf("HOME=%s", absBuildDir),
 	)
 
 	sandboxCmd.Env = cmdEnv
