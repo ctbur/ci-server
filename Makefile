@@ -1,5 +1,9 @@
 .PHONY: dev lint test build install
 
+ifneq ($(CI),)
+    export GOPATH := $(shell pwd)/.go
+endif
+
 dev:
 	CI_SERVER_DEV=1 go run ./cmd/server
 
