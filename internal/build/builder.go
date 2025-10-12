@@ -156,14 +156,14 @@ func (g *Git) Checkout(repoURL, commitSHA, targetDir string) error {
 		return fmt.Errorf("failed to init repo at '%s': %w", targetDir, err)
 	}
 
-	// sec: Path comes from a trusted user, other args are not security critical
+	// sec: Path comes from a trusted user, URL should come from a trusted source
 	fetchCmd := exec.Command("git", "-C", targetDir, "fetch", "--depth=1", repoURL, commitSHA) // #nosec G204
 	if err := fetchCmd.Run(); err != nil {
 		return fmt.Errorf("failed to fetch repo at '%s': %w", repoURL, err)
 	}
 
 	// Check out repo files to build dir
-	// sec: Path comes from a trusted user, other args are not security critical
+	// sec: Path comes from a trusted user, URL should come from a trusted source
 	checkoutCmd := exec.Command(
 		"git",
 		"--git-dir", fmt.Sprintf("%s/.git", targetDir),
