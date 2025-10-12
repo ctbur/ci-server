@@ -3,44 +3,65 @@ package assert
 import (
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"slices"
 	"strings"
 	"testing"
 )
 
-func NoError(t *testing.T, err error, msg string) {
+type Assert struct {
+	t       *testing.T
+	failure bool
+}
+
+func (a Assert) Fatal() {
+	if a.failure {
+		a.t.FailNow()
+	}
+}
+
+func NoError(t *testing.T, err error, msg string) Assert {
 	t.Helper()
 
 	if err != nil {
 		t.Errorf("%s: %v", msg, err)
+		return Assert{t: t, failure: true}
 	}
+	return Assert{t: t, failure: false}
 }
-func ErrorIs(t *testing.T, err, target error, msg string) {
+
+func ErrorIs(t *testing.T, err, target error, msg string) Assert {
 	t.Helper()
 
 	if !errors.Is(err, target) {
 		t.Errorf("%s: got error %v, want %v", msg, err, target)
+		return Assert{t: t, failure: true}
 	}
+	return Assert{t: t, failure: false}
 }
 
-func Equal[V comparable](t *testing.T, got V, want V, msg string) {
+func Equal[V comparable](t *testing.T, got V, want V, msg string) Assert {
 	t.Helper()
 
 	if got != want {
 		t.Errorf("%s: got %v, want %v", msg, got, want)
+		return Assert{t: t, failure: true}
 	}
+	return Assert{t: t, failure: false}
 }
 
-func DeepEqual[V any](t *testing.T, got V, want V, msg string) {
+func DeepEqual[V any](t *testing.T, got V, want V, msg string) Assert {
 	t.Helper()
 
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("%s:\n\tGot:  %#v\n\tWant: %#v", msg, got, want)
+		return Assert{t: t, failure: true}
 	}
+	return Assert{t: t, failure: false}
 }
 
-func ElementsMatch[V comparable](t *testing.T, got []V, want []V, msg string) {
+func ElementsMatch[V comparable](t *testing.T, got []V, want []V, msg string) Assert {
 	t.Helper()
 
 	var missing []V
@@ -58,7 +79,7 @@ func ElementsMatch[V comparable](t *testing.T, got []V, want []V, msg string) {
 	}
 
 	if len(missing) == 0 && len(unexpected) == 0 {
-		return
+		return Assert{t: t, failure: false}
 	}
 
 	var errMsg strings.Builder
@@ -78,4 +99,26 @@ func ElementsMatch[V comparable](t *testing.T, got []V, want []V, msg string) {
 	}
 
 	t.Errorf("%s:\n%s", msg, errMsg.String())
+	return Assert{t: t, failure: true}
+}
+
+func FileContents(t *testing.T, name, want, msg string) Assert {
+	t.Helper()
+
+	data, err := os.ReadFile(name)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s: wanted file '%s' does not exist", msg, name)
+		} else {
+			t.Errorf("%s: error reading file '%s'", msg, name)
+		}
+		return Assert{t: t, failure: true}
+	}
+
+	if string(data) != want {
+		t.Errorf("%s: contents of file '%s':\n\tGot: %s\n\tWant: %s", name, msg, data, want)
+		return Assert{t: t, failure: true}
+	}
+
+	return Assert{t: t, failure: false}
 }

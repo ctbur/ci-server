@@ -14,15 +14,15 @@ type Processor struct {
 	Repos   config.RepoConfigs
 	Builds  buildStore
 	Builder builderController
-	Dir     dataDir
+	Dir     processorDataDir
 }
 
-func NewProcessor(repos config.RepoConfigs, dir DataDir, s store.PGStore) *Processor {
+func NewProcessor(repos config.RepoConfigs, dir *DataDir, s store.PGStore) *Processor {
 	return &Processor{
 		Repos:   repos,
 		Builds:  s,
-		Dir:     &dir,
-		Builder: &BuilderController{DataDir: dir.RootDir},
+		Dir:     dir,
+		Builder: &BuilderController{Dir: dir},
 	}
 }
 
@@ -53,7 +53,7 @@ type builderController interface {
 	IsRunning(pid int, buildID uint64) bool
 }
 
-type dataDir interface {
+type processorDataDir interface {
 	ReadAndCleanExitCode(buildID uint64) (int, error)
 	RetainBuildDirs(retainedIDs []uint64) ([]uint64, error)
 }

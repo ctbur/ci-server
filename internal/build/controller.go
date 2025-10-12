@@ -14,14 +14,21 @@ import (
 )
 
 type BuilderController struct {
-	DataDir string
+	Dir *DataDir
 }
 
 type BuilderParams struct {
-	DataDir   string
-	Repo      config.RepoConfig
-	Build     store.PendingBuild
-	RunDeploy bool
+	DataDir             string
+	BuildID             uint64
+	CacheID             *uint64
+	RepoOwner, RepoName string
+	CommitSHA           string
+	PathEnvVar          string
+	EnvVars             map[string]string
+	BuildCmd            []string
+	BuildSecrets        map[string]string
+	DeployCmd           []string
+	DeploySecrets       map[string]string
 }
 
 // Create a new builder process by starting the same executable as the current
@@ -29,12 +36,26 @@ type BuilderParams struct {
 func (c *BuilderController) Start(
 	repo config.RepoConfig, build store.PendingBuild, runDeploy bool,
 ) (int, error) {
-	paramsJSON, err := json.Marshal(&BuilderParams{
-		DataDir:   c.DataDir,
-		Repo:      repo,
-		Build:     build,
-		RunDeploy: runDeploy,
-	})
+
+	params := BuilderParams{
+		DataDir:      c.Dir.RootDir,
+		BuildID:      build.ID,
+		CacheID:      build.CacheID,
+		RepoOwner:    repo.Owner,
+		RepoName:     repo.Name,
+		CommitSHA:    build.CommitSHA,
+		PathEnvVar:   os.Getenv("PATH"),
+		EnvVars:      repo.EnvVars,
+		BuildCmd:     repo.BuildCmd,
+		BuildSecrets: repo.BuildSecrets,
+	}
+
+	if runDeploy {
+		params.DeployCmd = repo.DeployCmd
+		params.DeploySecrets = repo.DeploySecrets
+	}
+
+	paramsJSON, err := json.Marshal(&params)
 	if err != nil {
 		return 0, fmt.Errorf("failed to build params to JSON: %w", err)
 	}
@@ -60,11 +81,12 @@ func (c *BuilderController) Start(
 		Setpgid: true,
 	}
 
-	logFile := getBuilderLogFile(c.DataDir, build.ID)
-	// sec: Path is from a trusted user
-	outFile, _ := os.OpenFile(logFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o600) // #nosec G304
-	builderCmd.Stdout = outFile
-	builderCmd.Stderr = outFile
+	logWriter, err := c.Dir.OpenBuilderLogs(build.ID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to open builder logs: %w", err)
+	}
+	builderCmd.Stdout = logWriter
+	builderCmd.Stderr = logWriter
 
 	if err := builderCmd.Start(); err != nil {
 		return 0, fmt.Errorf("failed to start builder process: %w", err)
