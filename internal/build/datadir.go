@@ -1,9 +1,12 @@
 package build
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"slices"
@@ -17,8 +20,10 @@ import (
  *     <ID>/             build dir for build with ID
  *   exit_code/
  *     <ID>            exit code of the build command
- *   logs/
+ *   build-logs/
  *     <ID>.jsonl        log file for build with ID
+ *   builder-logs/
+ *     <ID>.jsonl        log file for builder with ID
  *
  *
  * The cache dir is used to speed up builds on the default branch.
@@ -28,12 +33,16 @@ import (
  */
 
 type DataDir struct {
-	RootDir            string
-	modifiedRepoCaches map[string]struct{}
+	RootDir string
+}
+
+func (d *DataDir) WriteExitCode(buildID uint64, exitCode int) error {
+	exitCodePath := path.Join(d.RootDir, "exit-code", strconv.FormatUint(buildID, 10))
+	return os.WriteFile(exitCodePath, []byte(strconv.Itoa(exitCode)), 0o600)
 }
 
 func (d *DataDir) ReadAndCleanExitCode(buildID uint64) (int, error) {
-	exitCodeFile := getExitCodeFile(d.RootDir, buildID)
+	exitCodeFile := path.Join(d.RootDir, "exit-code", strconv.FormatUint(buildID, 10))
 	// sec: Path is from a trusted user
 	data, err := os.ReadFile(exitCodeFile) // #nosec G304
 	if err != nil {
@@ -50,6 +59,58 @@ func (d *DataDir) ReadAndCleanExitCode(buildID uint64) (int, error) {
 	}
 
 	return int(exitCode), nil
+}
+
+// CreateBuildDir creates directory, which contains another directory under
+// checkoutDir. If the cacheID is given, files from the build dir with the same
+// ID are copied into the directory beforehand.
+// It returns the absolute build dir path, or the first error encountered.
+func (d *DataDir) CreateBuildDir(
+	buildID uint64, cacheID *uint64, checkoutDir string,
+) (string, error) {
+	buildDir := path.Join(d.RootDir, "build", strconv.FormatUint(buildID, 10))
+
+	if cacheID != nil {
+		cacheDir := path.Join(d.RootDir, "build", strconv.FormatUint(*cacheID, 10))
+		// copyDirs will create the build dir
+		if err := copyDirs(cacheDir, buildDir); err != nil {
+			return "", fmt.Errorf(
+				"failed to copy repo cache dir '%s' to build dir '%s': %w",
+				cacheDir, buildDir, err,
+			)
+		}
+	} else {
+		if err := os.Mkdir(buildDir, 0o700); err != nil {
+			return "", fmt.Errorf("failed to create empty dir: %w", err)
+		}
+	}
+
+	// Ensure checkout dir exists
+	if err := os.MkdirAll(path.Join(buildDir, checkoutDir), 0o700); err != nil {
+		return "", fmt.Errorf("failed to create checkout dir: %w", err)
+	}
+
+	// Get absolute build dir path for sandbox parameters
+	absBuildDir, err := filepath.Abs(buildDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve build dir path: %w", err)
+	}
+
+	return absBuildDir, nil
+}
+
+func copyDirs(src, dst string) error {
+	// Use cp -a for archive copy (preserving most (all?) attributes and symlinks)
+	cpCmd := exec.Command("cp", "-a", src, dst)
+
+	out := &bytes.Buffer{}
+	cpCmd.Stdout = out
+	cpCmd.Stderr = out
+
+	if err := cpCmd.Run(); err != nil {
+		return fmt.Errorf("failed to copy dirs: w%\n\ncp output:\n%s", err, out)
+	}
+	return nil
 }
 
 func (d *DataDir) RetainBuildDirs(retainedIDs []uint64) ([]uint64, error) {
@@ -126,22 +187,14 @@ func (d *DataDir) CreateRootDirs() error {
 	return nil
 }
 
-func (d *DataDir) GetRootDir() string {
-	return d.RootDir
+func (d *DataDir) OpenBuildLogs(buildID uint64) (io.WriteCloser, error) {
+	logFilePath := path.Join(d.RootDir, "build-logs", fmt.Sprintf("%d.jsonl", buildID))
+	// sec: Path is from a trusted user
+	return os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) // #nosec G304
 }
 
-func getLogFile(dataDir string, buildID uint64) string {
-	return path.Join(dataDir, "build-logs", fmt.Sprintf("%d.jsonl", buildID))
-}
-
-func getBuilderLogFile(dataDir string, buildID uint64) string {
-	return path.Join(dataDir, "builder-logs", fmt.Sprintf("%d.txt", buildID))
-}
-
-func getExitCodeFile(dataDir string, buildID uint64) string {
-	return path.Join(dataDir, "exit-code", strconv.FormatUint(buildID, 10))
-}
-
-func getBuildDir(dataDir string, buildID uint64) string {
-	return path.Join(dataDir, "build", strconv.FormatUint(buildID, 10))
+func (d *DataDir) OpenBuilderLogs(buildID uint64) (io.WriteCloser, error) {
+	logFilePath := path.Join(d.RootDir, "builder-logs", fmt.Sprintf("%d.txt", buildID))
+	// sec: Path is from a trusted user
+	return os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) // #nosec G304
 }
