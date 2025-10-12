@@ -105,7 +105,8 @@ func ElementsMatch[V comparable](t *testing.T, got []V, want []V, msg string) As
 func FileContents(t *testing.T, name, want, msg string) Assert {
 	t.Helper()
 
-	data, err := os.ReadFile(name)
+	// sec: not required for test code
+	data, err := os.ReadFile(name) // #nosec G304
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			t.Errorf("%s: wanted file '%s' does not exist", msg, name)
