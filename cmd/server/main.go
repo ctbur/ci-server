@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"html/template"
 	"log/slog"
+	"net/http"
 	"os"
 	"path"
 
 	"github.com/ctbur/ci-server/v2/internal/build"
 	"github.com/ctbur/ci-server/v2/internal/config"
+	"github.com/ctbur/ci-server/v2/internal/github"
 	"github.com/ctbur/ci-server/v2/internal/store"
 	"github.com/ctbur/ci-server/v2/internal/web"
 	"github.com/ctbur/ci-server/v2/internal/web/auth"
@@ -116,7 +118,24 @@ func runServer() error {
 		return fmt.Errorf("failed to create dirs under %s: %w", cfg.DataDir, err)
 	}
 
-	processor := build.NewProcessor(cfg.Repos, &dataDir, pgStore)
+	privateKeyFile, err := os.Open(cfg.GitHub.PrivateKeyPath)
+	if err != nil {
+		return fmt.Errorf("failed to open GitHub app private key file: %w", err)
+	}
+	defer privateKeyFile.Close()
+
+	ghAppPrivateKey, err := config.LoadRSAPrivateKey(privateKeyFile)
+	if err != nil {
+		return fmt.Errorf("failed to read GitHub app private key: %w", err)
+	}
+	githubApp := github.NewGitHubApp(
+		&http.Client{},
+		cfg.GitHub.AppID,
+		cfg.GitHub.InstallationID,
+		ghAppPrivateKey,
+	)
+
+	processor := build.NewProcessor(cfg, &dataDir, pgStore, githubApp)
 	go processor.Run(slog.Default(), ctx)
 
 	logStore := store.LogStore{
