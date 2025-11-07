@@ -28,7 +28,6 @@ func handleGitHub(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 			return
 		}
 
-		// Read payload and unmarshal
 		payload, err := io.ReadAll(r.Body)
 		if err != nil {
 			errMsg := fmt.Sprintf("Failed to read request body: %v", err)
@@ -36,6 +35,30 @@ func handleGitHub(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 			return
 		}
 
+		// Verify signature
+		if cfg.GitHub.WebhookSecret == "" {
+			errMsg := fmt.Sprintf("No webhook secret configured")
+			http.Error(w, errMsg, http.StatusInternalServerError)
+			return
+		}
+
+		signature := r.Header.Get("X-Hub-Signature-256")
+		if len(signature) == 0 {
+			http.Error(w, "Missing X-Hub-Signature-256 header", http.StatusUnauthorized)
+			return
+		}
+		signature = strings.TrimPrefix(signature, "sha256=")
+
+		mac := hmac.New(sha256.New, []byte(cfg.GitHub.WebhookSecret))
+		_, _ = mac.Write(payload)
+		expectedMAC := hex.EncodeToString(mac.Sum(nil))
+
+		if !hmac.Equal([]byte(signature), []byte(expectedMAC)) {
+			http.Error(w, "Invalid signature", http.StatusUnauthorized)
+			return
+		}
+
+		// Unmarshal
 		var event *PushEvent
 		err = json.Unmarshal(payload, &event)
 		if err != nil {
@@ -61,31 +84,6 @@ func handleGitHub(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 		if repoCfg == nil {
 			errMsg := fmt.Sprintf("Repository %s/%s not configured", owner, name)
 			http.Error(w, errMsg, http.StatusNotFound)
-			return
-		}
-
-		// Verify signature
-		// We can only do it after unmarshalling the JSON because we need to
-		// know which webhook secret to use.
-		if repoCfg.WebhookSecret == nil {
-			errMsg := fmt.Sprintf("Repositoroy %s/%s has no webhook secret configured", owner, name)
-			http.Error(w, errMsg, http.StatusInternalServerError)
-			return
-		}
-
-		signature := r.Header.Get("X-Hub-Signature-256")
-		if len(signature) == 0 {
-			http.Error(w, "Missing X-Hub-Signature-256 header", http.StatusUnauthorized)
-			return
-		}
-		signature = strings.TrimPrefix(signature, "sha256=")
-
-		mac := hmac.New(sha256.New, []byte(*repoCfg.WebhookSecret))
-		_, _ = mac.Write(payload)
-		expectedMAC := hex.EncodeToString(mac.Sum(nil))
-
-		if !hmac.Equal([]byte(signature), []byte(expectedMAC)) {
-			http.Error(w, "Invalid signature", http.StatusUnauthorized)
 			return
 		}
 
