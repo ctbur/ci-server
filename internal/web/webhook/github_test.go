@@ -91,7 +91,7 @@ func TestGitHubWebhook(t *testing.T) {
 		payload       string
 		repoOwner     string
 		repoName      string
-		webhookSecret *string
+		webhookSecret string
 		wantHTTPCode  int
 		wantBuild     *store.BuildMeta
 	}{
@@ -101,7 +101,7 @@ func TestGitHubWebhook(t *testing.T) {
 			payload:       fixPayload,
 			repoOwner:     "ctbur",
 			repoName:      "ctbur.net",
-			webhookSecret: &fixWebhookSecret,
+			webhookSecret: fixWebhookSecret,
 			wantHTTPCode:  http.StatusOK,
 			wantBuild:     nil,
 		},
@@ -111,7 +111,7 @@ func TestGitHubWebhook(t *testing.T) {
 			payload:       strings.ReplaceAll(fixPayload, "c5ec2129a2a892156c8c97220e6059b9d47b7217", "not a commit SHA"),
 			repoOwner:     "ctbur",
 			repoName:      "ctbur.net",
-			webhookSecret: &fixWebhookSecret,
+			webhookSecret: fixWebhookSecret,
 			wantHTTPCode:  http.StatusBadRequest,
 			wantBuild:     nil,
 		},
@@ -121,7 +121,7 @@ func TestGitHubWebhook(t *testing.T) {
 			payload:       fixPayload,
 			repoOwner:     "ctbur",
 			repoName:      "ctbur.net",
-			webhookSecret: &fixWebhookSecret,
+			webhookSecret: fixWebhookSecret,
 			wantHTTPCode:  http.StatusUnauthorized,
 			wantBuild:     nil,
 		},
@@ -131,7 +131,7 @@ func TestGitHubWebhook(t *testing.T) {
 			payload:       fixPayload,
 			repoOwner:     "ctbur",
 			repoName:      "ctbur.net",
-			webhookSecret: &fixWebhookSecret,
+			webhookSecret: fixWebhookSecret,
 			wantHTTPCode:  http.StatusUnauthorized,
 			wantBuild:     nil,
 		},
@@ -141,7 +141,7 @@ func TestGitHubWebhook(t *testing.T) {
 			payload:       fixPayload,
 			repoOwner:     "ctbur",
 			repoName:      "other-repo",
-			webhookSecret: &fixWebhookSecret,
+			webhookSecret: fixWebhookSecret,
 			wantHTTPCode:  http.StatusNotFound,
 			wantBuild:     nil,
 		},
@@ -151,7 +151,7 @@ func TestGitHubWebhook(t *testing.T) {
 			payload:       fixPayload,
 			repoOwner:     "ctbur",
 			repoName:      "ctbur.net",
-			webhookSecret: nil,
+			webhookSecret: "",
 			wantHTTPCode:  http.StatusInternalServerError,
 			wantBuild:     nil,
 		},
@@ -161,7 +161,7 @@ func TestGitHubWebhook(t *testing.T) {
 			payload:       fixPayload,
 			repoOwner:     "ctbur",
 			repoName:      "ctbur.net",
-			webhookSecret: &fixWebhookSecret,
+			webhookSecret: fixWebhookSecret,
 			wantHTTPCode:  http.StatusOK,
 			wantBuild: &store.BuildMeta{
 				Link:      "https://github.com/ctbur/ctbur.net/commit/c5ec2129a2a892156c8c97220e6059b9d47b7217",
@@ -191,7 +191,7 @@ Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.c
 			payload:       fixPayloadEmptyCommits,
 			repoOwner:     "ctbur",
 			repoName:      "ctbur.net",
-			webhookSecret: &fixWebhookSecret,
+			webhookSecret: fixWebhookSecret,
 			wantHTTPCode:  http.StatusOK,
 			wantBuild:     nil, // No build created on branch deletion
 		},
@@ -201,11 +201,13 @@ Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.c
 		t.Run(tc.desc, func(t *testing.T) {
 			// Given
 			cfg := config.Config{
+				GitHub: config.GitHubConfig{
+					WebhookSecret: tc.webhookSecret,
+				},
 				Repos: []config.RepoConfig{
 					{
-						Owner:         tc.repoOwner,
-						Name:          tc.repoName,
-						WebhookSecret: tc.webhookSecret,
+						Owner: tc.repoOwner,
+						Name:  tc.repoName,
 					},
 				},
 			}

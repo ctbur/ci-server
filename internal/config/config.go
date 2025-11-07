@@ -6,7 +6,6 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// TODO: Validate that required fields are set
 type Config struct {
 	HostURL string       `toml:"host_url"`
 	DataDir string       `toml:"data_dir"`
@@ -18,6 +17,8 @@ type GitHubConfig struct {
 	AppID          uint64 `toml:"app_id"`
 	InstallationID uint64 `toml:"installation_id"`
 	PrivateKeyPath string `toml:"private_key_path"`
+	// Name mapped to "encrypted_webhook_secret" - we decrypt it as part of loading the config
+	WebhookSecret string `toml:"encrypted_webhook_secret,omitempty"`
 }
 
 type RepoConfigs []RepoConfig
@@ -33,8 +34,6 @@ type RepoConfig struct {
 	DeployCmd    []string          `toml:"deploy_command"`
 	// Name mapped to "encrypted_deploy_secrets" - we decrypt it as part of loading the config
 	DeploySecrets map[string]string `toml:"encrypted_deploy_secrets"`
-	// Name mapped to "encrypted_webhook_secret" - we decrypt it as part of loading the config
-	WebhookSecret *string `toml:"encrypted_webhook_secret,omitempty"`
 }
 
 func Load(secretKey, configFile string) (*Config, error) {
@@ -43,7 +42,17 @@ func Load(secretKey, configFile string) (*Config, error) {
 		return nil, fmt.Errorf("failed to load config file: %w", err)
 	}
 
-	// Decrypt secrets
+	// TODO: Validate that required fields are set
+
+	// Decrypt webhook secret
+	plaintext, err := decryptSecret(secretKey, cfg.GitHub.WebhookSecret)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt webhook secret: %w", err)
+	}
+
+	cfg.GitHub.WebhookSecret = plaintext
+
+	// Decrypt repo secrets
 	for i := range cfg.Repos {
 		for secretName := range cfg.Repos[i].BuildSecrets {
 			plaintext, err := decryptSecret(secretKey, cfg.Repos[i].BuildSecrets[secretName])
@@ -67,18 +76,6 @@ func Load(secretKey, configFile string) (*Config, error) {
 			}
 
 			cfg.Repos[i].DeploySecrets[secretName] = plaintext
-		}
-
-		if cfg.Repos[i].WebhookSecret != nil {
-			plaintext, err := decryptSecret(secretKey, *cfg.Repos[i].WebhookSecret)
-			if err != nil {
-				return nil, fmt.Errorf(
-					"failed to decrypt webhook secret of %s/%s: %w",
-					cfg.Repos[i].Owner, cfg.Repos[i].Name, err,
-				)
-			}
-
-			cfg.Repos[i].WebhookSecret = &plaintext
 		}
 	}
 
