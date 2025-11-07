@@ -7,37 +7,17 @@ import (
 	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/config"
+	"github.com/ctbur/ci-server/v2/internal/github"
 	"github.com/ctbur/ci-server/v2/internal/store"
 )
 
 type Processor struct {
+	HostURL string
 	Repos   config.RepoConfigs
 	Builds  buildStore
 	Builder builderController
 	Dir     processorDataDir
-}
-
-func NewProcessor(repos config.RepoConfigs, dir *DataDir, s store.PGStore) *Processor {
-	return &Processor{
-		Repos:   repos,
-		Builds:  s,
-		Dir:     dir,
-		Builder: &BuilderController{Dir: dir},
-	}
-}
-
-const dispatchPollPeriod = 500 * time.Millisecond
-
-func (p *Processor) Run(log *slog.Logger, ctx context.Context) error {
-	for {
-		select {
-		case <-time.After(dispatchPollPeriod):
-			p.process(log, ctx)
-
-		case <-ctx.Done():
-			return nil
-		}
-	}
+	GitHub  commitStatusCreator
 }
 
 type buildStore interface {
@@ -56,6 +36,44 @@ type builderController interface {
 type processorDataDir interface {
 	ReadAndCleanExitCode(buildID uint64) (int, error)
 	RetainBuildDirs(retainedIDs []uint64) ([]uint64, error)
+}
+
+type commitStatusCreator interface {
+	CreateCommitStatus(
+		ctx context.Context,
+		owner, repo, sha string,
+		state github.CommitState,
+		description string,
+		targetURL string,
+		contextStr string,
+	) error
+}
+
+func NewProcessor(
+	cfg *config.Config, dir *DataDir, s store.PGStore, gh *github.GitHubApp,
+) *Processor {
+	return &Processor{
+		HostURL: cfg.HostURL,
+		Repos:   cfg.Repos,
+		Builds:  s,
+		Dir:     dir,
+		Builder: &BuilderController{Dir: dir},
+		GitHub:  gh,
+	}
+}
+
+const dispatchPollPeriod = 500 * time.Millisecond
+
+func (p *Processor) Run(log *slog.Logger, ctx context.Context) error {
+	for {
+		select {
+		case <-time.After(dispatchPollPeriod):
+			p.process(log, ctx)
+
+		case <-ctx.Done():
+			return nil
+		}
+	}
 }
 
 func (p *Processor) process(log *slog.Logger, ctx context.Context) {
@@ -103,6 +121,32 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 		if err != nil {
 			log.InfoContext(ctx, "failed to finish build", slog.Any("error", err))
 			continue
+		}
+
+		commitState := github.CommitStateError
+		switch result {
+		case store.BuildResultSuccess:
+			commitState = github.CommitStateSuccess
+		case store.BuildResultFailed, store.BuildResultCanceled, store.BuildResultTimeout:
+			commitState = github.CommitStateFailure
+		}
+		err = p.GitHub.CreateCommitStatus(
+			ctx,
+			br.Repo.Owner,
+			br.Repo.Name,
+			br.CommitSHA,
+			commitState,
+			"Build finished",
+			fmt.Sprintf("%s/builds/%d", p.HostURL, br.BuildID),
+			"CI",
+		)
+		if err != nil {
+			log.ErrorContext(
+				ctx,
+				"failed to create finished commit status",
+				slog.Uint64("build_id", br.BuildID),
+				slog.Any("error", err),
+			)
 		}
 
 		log.InfoContext(
@@ -159,6 +203,26 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 				slog.Any("error", err),
 			)
 		}
+
+		err = p.GitHub.CreateCommitStatus(
+			ctx,
+			b.Repo.Owner,
+			b.Repo.Name,
+			b.CommitSHA,
+			github.CommitStatePending,
+			"Build started",
+			fmt.Sprintf("%s/builds/%d", p.HostURL, b.ID),
+			"CI",
+		)
+		if err != nil {
+			log.ErrorContext(
+				ctx,
+				"failed to create pending commit status",
+				slog.Uint64("build_id", b.ID),
+				slog.Any("error", err),
+			)
+		}
+
 		log.InfoContext(
 			ctx, "Started build",
 			slog.Uint64("build_id", b.ID),

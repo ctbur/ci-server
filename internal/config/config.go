@@ -6,9 +6,18 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+// TODO: Validate that required fields are set
 type Config struct {
-	DataDir string      `toml:"data_dir"`
-	Repos   RepoConfigs `toml:"repos"`
+	HostURL string       `toml:"host_url"`
+	DataDir string       `toml:"data_dir"`
+	GitHub  GitHubConfig `toml:"github"`
+	Repos   RepoConfigs  `toml:"repos"`
+}
+
+type GitHubConfig struct {
+	AppID          uint64 `toml:"app_id"`
+	InstallationID uint64 `toml:"installation_id"`
+	PrivateKeyPath string `toml:"private_key_path"`
 }
 
 type RepoConfigs []RepoConfig
@@ -20,8 +29,8 @@ type RepoConfig struct {
 	EnvVars       map[string]string `toml:"env_vars"`
 	BuildCmd      []string          `toml:"build_command"`
 	// Name mapped to "encrypted_build_secrets" - we decrypt it as part of loading the config
-	BuildSecrets  map[string]string `toml:"encrypted_build_secrets"`
-	DeployCmd []string          `toml:"deploy_command"`
+	BuildSecrets map[string]string `toml:"encrypted_build_secrets"`
+	DeployCmd    []string          `toml:"deploy_command"`
 	// Name mapped to "encrypted_deploy_secrets" - we decrypt it as part of loading the config
 	DeploySecrets map[string]string `toml:"encrypted_deploy_secrets"`
 	// Name mapped to "encrypted_webhook_secret" - we decrypt it as part of loading the config

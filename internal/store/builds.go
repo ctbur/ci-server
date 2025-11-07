@@ -379,11 +379,12 @@ func (s PGStore) GetPendingBuilds(ctx context.Context) ([]PendingBuild, error) {
 }
 
 type Builder struct {
-	PID     int
-	BuildID uint64
-	Repo    Repo
-	Ref     string
-	CacheID *uint64
+	PID       int
+	BuildID   uint64
+	Repo      Repo
+	CommitSHA string
+	Ref       string
+	CacheID   *uint64
 }
 
 func (s PGStore) ListBuilders(ctx context.Context) ([]Builder, error) {
@@ -394,6 +395,7 @@ func (s PGStore) ListBuilders(ctx context.Context) ([]Builder, error) {
 			b.id,
 			r.owner,
 			r.name,
+			b.commit_sha,
 			b.ref,
 			br.cache_id
 		FROM builders AS br
@@ -415,6 +417,7 @@ func (s PGStore) ListBuilders(ctx context.Context) ([]Builder, error) {
 				&b.BuildID,
 				&b.Repo.Owner,
 				&b.Repo.Name,
+				&b.CommitSHA,
 				&b.Ref,
 				&b.CacheID,
 			)
