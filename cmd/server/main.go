@@ -118,22 +118,25 @@ func runServer() error {
 		return fmt.Errorf("failed to create dirs under %s: %w", cfg.DataDir, err)
 	}
 
-	privateKeyFile, err := os.Open(cfg.GitHub.PrivateKeyPath)
-	if err != nil {
-		return fmt.Errorf("failed to open GitHub app private key file: %w", err)
-	}
-	defer privateKeyFile.Close()
+	var githubApp *github.GitHubApp
+	if cfg.GitHub != nil {
+		privateKeyFile, err := os.Open(cfg.GitHub.PrivateKeyPath)
+		if err != nil {
+			return fmt.Errorf("failed to open GitHub app private key file: %w", err)
+		}
+		defer privateKeyFile.Close()
 
-	ghAppPrivateKey, err := config.LoadRSAPrivateKey(privateKeyFile)
-	if err != nil {
-		return fmt.Errorf("failed to read GitHub app private key: %w", err)
+		ghAppPrivateKey, err := config.LoadRSAPrivateKey(privateKeyFile)
+		if err != nil {
+			return fmt.Errorf("failed to read GitHub app private key: %w", err)
+		}
+		githubApp = github.NewGitHubApp(
+			&http.Client{},
+			cfg.GitHub.AppID,
+			cfg.GitHub.InstallationID,
+			ghAppPrivateKey,
+		)
 	}
-	githubApp := github.NewGitHubApp(
-		&http.Client{},
-		cfg.GitHub.AppID,
-		cfg.GitHub.InstallationID,
-		ghAppPrivateKey,
-	)
 
 	processor := build.NewProcessor(cfg, &dataDir, pgStore, githubApp)
 	go processor.Run(slog.Default(), ctx)

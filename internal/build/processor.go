@@ -52,13 +52,19 @@ type commitStatusCreator interface {
 func NewProcessor(
 	cfg *config.Config, dir *DataDir, s store.PGStore, gh *github.GitHubApp,
 ) *Processor {
+	// Ensure that interface is nil when gh is nil
+	var pgh commitStatusCreator
+	if gh != nil {
+		pgh = gh
+	}
+
 	return &Processor{
 		HostURL: cfg.HostURL,
 		Repos:   cfg.Repos,
 		Builds:  s,
 		Dir:     dir,
 		Builder: &BuilderController{Dir: dir},
-		GitHub:  gh,
+		GitHub:  pgh,
 	}
 }
 
@@ -123,30 +129,32 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 			continue
 		}
 
-		commitState := github.CommitStateError
-		switch result {
-		case store.BuildResultSuccess:
-			commitState = github.CommitStateSuccess
-		case store.BuildResultFailed, store.BuildResultCanceled, store.BuildResultTimeout:
-			commitState = github.CommitStateFailure
-		}
-		err = p.GitHub.CreateCommitStatus(
-			ctx,
-			br.Repo.Owner,
-			br.Repo.Name,
-			br.CommitSHA,
-			commitState,
-			"Build finished",
-			fmt.Sprintf("%s/builds/%d", p.HostURL, br.BuildID),
-			"CI",
-		)
-		if err != nil {
-			log.ErrorContext(
+		if p.GitHub != nil {
+			commitState := github.CommitStateError
+			switch result {
+			case store.BuildResultSuccess:
+				commitState = github.CommitStateSuccess
+			case store.BuildResultFailed, store.BuildResultCanceled, store.BuildResultTimeout:
+				commitState = github.CommitStateFailure
+			}
+			err = p.GitHub.CreateCommitStatus(
 				ctx,
-				"failed to create finished commit status",
-				slog.Uint64("build_id", br.BuildID),
-				slog.Any("error", err),
+				br.Repo.Owner,
+				br.Repo.Name,
+				br.CommitSHA,
+				commitState,
+				"Build finished",
+				fmt.Sprintf("%s/builds/%d", p.HostURL, br.BuildID),
+				"CI",
 			)
+			if err != nil {
+				log.ErrorContext(
+					ctx,
+					"failed to create finished commit status",
+					slog.Uint64("build_id", br.BuildID),
+					slog.Any("error", err),
+				)
+			}
 		}
 
 		log.InfoContext(
@@ -204,23 +212,25 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 			)
 		}
 
-		err = p.GitHub.CreateCommitStatus(
-			ctx,
-			b.Repo.Owner,
-			b.Repo.Name,
-			b.CommitSHA,
-			github.CommitStatePending,
-			"Build started",
-			fmt.Sprintf("%s/builds/%d", p.HostURL, b.ID),
-			"CI",
-		)
-		if err != nil {
-			log.ErrorContext(
+		if p.GitHub != nil {
+			err = p.GitHub.CreateCommitStatus(
 				ctx,
-				"failed to create pending commit status",
-				slog.Uint64("build_id", b.ID),
-				slog.Any("error", err),
+				b.Repo.Owner,
+				b.Repo.Name,
+				b.CommitSHA,
+				github.CommitStatePending,
+				"Build started",
+				fmt.Sprintf("%s/builds/%d", p.HostURL, b.ID),
+				"CI",
 			)
+			if err != nil {
+				log.ErrorContext(
+					ctx,
+					"failed to create pending commit status",
+					slog.Uint64("build_id", b.ID),
+					slog.Any("error", err),
+				)
+			}
 		}
 
 		log.InfoContext(

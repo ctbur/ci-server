@@ -201,7 +201,7 @@ Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.c
 		t.Run(tc.desc, func(t *testing.T) {
 			// Given
 			cfg := config.Config{
-				GitHub: config.GitHubConfig{
+				GitHub: &config.GitHubConfig{
 					WebhookSecret: tc.webhookSecret,
 				},
 				Repos: []config.RepoConfig{

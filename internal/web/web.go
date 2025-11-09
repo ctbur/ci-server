@@ -47,7 +47,7 @@ func RunServer(log *slog.Logger, handler http.Handler, port int) error {
 		Handler: handler,
 
 		ReadTimeout:       1 * time.Second,
-		WriteTimeout:      1 * time.Second,
+		WriteTimeout:      300 * time.Second, // Very timeout long for SSE
 		IdleTimeout:       30 * time.Second,
 		ReadHeaderTimeout: 2 * time.Second,
 	}

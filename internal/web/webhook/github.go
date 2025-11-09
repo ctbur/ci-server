@@ -37,8 +37,7 @@ func handleGitHub(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 
 		// Verify signature
 		if cfg.GitHub.WebhookSecret == "" {
-			errMsg := fmt.Sprintf("No webhook secret configured")
-			http.Error(w, errMsg, http.StatusInternalServerError)
+			http.Error(w, "No webhook secret configured", http.StatusInternalServerError)
 			return
 		}
 

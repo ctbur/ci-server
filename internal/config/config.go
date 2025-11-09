@@ -7,10 +7,10 @@ import (
 )
 
 type Config struct {
-	HostURL string       `toml:"host_url"`
-	DataDir string       `toml:"data_dir"`
-	GitHub  GitHubConfig `toml:"github"`
-	Repos   RepoConfigs  `toml:"repos"`
+	HostURL string        `toml:"host_url"`
+	DataDir string        `toml:"data_dir"`
+	GitHub  *GitHubConfig `toml:"github"`
+	Repos   RepoConfigs   `toml:"repos"`
 }
 
 type GitHubConfig struct {
@@ -45,12 +45,14 @@ func Load(secretKey, configFile string) (*Config, error) {
 	// TODO: Validate that required fields are set
 
 	// Decrypt webhook secret
-	plaintext, err := decryptSecret(secretKey, cfg.GitHub.WebhookSecret)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt webhook secret: %w", err)
-	}
+	if cfg.GitHub != nil {
+		plaintext, err := decryptSecret(secretKey, cfg.GitHub.WebhookSecret)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt webhook secret: %w", err)
+		}
 
-	cfg.GitHub.WebhookSecret = plaintext
+		cfg.GitHub.WebhookSecret = plaintext
+	}
 
 	// Decrypt repo secrets
 	for i := range cfg.Repos {
