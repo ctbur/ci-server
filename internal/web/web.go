@@ -23,8 +23,8 @@ import (
 func Handler(
 	cfg *config.Config,
 	userAuth auth.UserAuth,
-	store store.PGStore,
-	logs store.LogStore,
+	s store.PGStore,
+	l store.LogStore,
 	tmpl *template.Template,
 	staticFileDir string,
 ) http.Handler {
@@ -33,10 +33,14 @@ func Handler(
 	staticFileServer := http.FileServer(http.Dir(staticFileDir))
 	mux.Handle("/static/", http.StripPrefix("/static/", staticFileServer))
 
-	webhookHandler := http.StripPrefix("/webhook", webhook.Handler(cfg, userAuth, store))
-	mux.Handle("/webhook/", webhookHandler)
+	mux.Handle("POST /webhook/manual", userAuth.Middleware(webhook.HandleManual(s, cfg)))
+	mux.Handle("POST /webhook/github", webhook.HandleGitHub(s, cfg))
 
-	mux.Handle("/", userAuth.Middleware(ui.Handler(cfg, store, logs, tmpl)))
+	uiMux := http.NewServeMux()
+	uiMux.Handle("GET /{$}", ui.HandleBuildList(s, tmpl))
+	uiMux.Handle("GET /builds/{build_id}", ui.HandleBuildDetails(s, l, tmpl))
+	uiMux.Handle("GET /builds/{build_id}/log-stream", ui.HandleLogStream(s, l, tmpl))
+	mux.Handle("/", userAuth.Middleware(uiMux))
 
 	return wlog.Middleware(mux)
 }

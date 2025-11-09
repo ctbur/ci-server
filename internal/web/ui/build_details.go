@@ -7,81 +7,11 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
-	"github.com/ctbur/ci-server/v2/internal/config"
 	"github.com/ctbur/ci-server/v2/internal/store"
 	"github.com/ctbur/ci-server/v2/internal/web/wlog"
 )
-
-func Handler(cfg *config.Config, s store.PGStore, l store.LogStore, tmpl *template.Template) http.Handler {
-	mux := http.NewServeMux()
-
-	mux.Handle("GET /{$}", handleBuildList(s, tmpl))
-	mux.Handle("GET /builds/{build_id}", handleBuildDetails(s, l, tmpl))
-	mux.Handle("GET /builds/{build_id}/log-stream", handleLogStream(s, l, tmpl))
-
-	return mux
-}
-
-type BuildListPage struct {
-	BuildCards []BuildCard
-}
-
-type BuildCard struct {
-	ID        uint64
-	Status    string
-	Message   string
-	Author    string
-	Ref       string
-	CommitSHA string
-	Duration  *time.Duration
-	Started   *time.Time
-}
-
-func handleBuildList(s store.PGStore, tmpl *template.Template) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		log := wlog.FromContext(ctx)
-
-		builds, err := s.ListBuilds(ctx)
-		if err != nil {
-			http.Error(w, "Failed to list builds", http.StatusInternalServerError)
-			log.Error("Failed to list builds", slog.Any("error", err))
-			return
-		}
-
-		buildCards := make([]BuildCard, len(builds))
-		for i, b := range builds {
-			card := BuildCard{
-				ID:        b.ID,
-				Status:    buildStatus(b),
-				Message:   shortCommitMessage(b.Message),
-				Author:    b.Author,
-				Ref:       b.Ref,
-				CommitSHA: b.CommitSHA[:min(7, len(b.CommitSHA))],
-				Duration:  durationSinceBuildStart(b),
-				Started:   b.Started,
-			}
-			buildCards[i] = card
-		}
-		params := &BuildListPage{
-			BuildCards: buildCards,
-		}
-
-		var b bytes.Buffer
-		err = tmpl.ExecuteTemplate(&b, "page_build_list", params)
-		if err != nil {
-			http.Error(w, "Failed to render template", http.StatusInternalServerError)
-			log.Error("Failed to render template", slog.Any("error", err))
-			return
-		}
-
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = b.WriteTo(w)
-	}
-}
 
 type LogLine struct {
 	Number         uint
@@ -101,7 +31,7 @@ type BuildDetailsPage struct {
 	LogLines  []LogLine
 }
 
-func handleBuildDetails(s store.PGStore, l store.LogStore, tmpl *template.Template) http.HandlerFunc {
+func HandleBuildDetails(s store.PGStore, l store.LogStore, tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		log := wlog.FromContext(ctx)
@@ -155,37 +85,9 @@ func handleBuildDetails(s store.PGStore, l store.LogStore, tmpl *template.Templa
 	}
 }
 
-func durationSinceBuildStart(b store.Build) *time.Duration {
-	if b.Started == nil {
-		return nil
-	}
-
-	var duration time.Duration
-	if b.Finished != nil {
-		duration = b.Finished.Sub(*b.Started)
-	} else {
-		duration = time.Since(*b.Started)
-	}
-	return &duration
-}
-
-func buildStatus(b store.Build) string {
-	if b.Result != nil {
-		return string(*b.Result)
-	} else if b.Started != nil {
-		return "running"
-	}
-	return "pending"
-}
-
-func shortCommitMessage(msg string) string {
-	trimmed := strings.TrimSpace(msg)
-	return strings.SplitN(trimmed, "\n", 2)[0]
-}
-
 const LogPollPeriod = 500 * time.Millisecond
 
-func handleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template) http.HandlerFunc {
+func HandleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		log := wlog.FromContext(ctx)
@@ -290,39 +192,6 @@ func handleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template)
 
 		sseWriter.sendEvent("", "build-finished", "")
 	}
-}
-
-type SSEWriter struct {
-	w  http.ResponseWriter
-	rc *http.ResponseController
-}
-
-func beginSSE(w http.ResponseWriter) *SSEWriter {
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	// Flush headers immediately
-	w.WriteHeader(http.StatusOK)
-
-	rc := http.NewResponseController(w)
-	return &SSEWriter{w, rc}
-}
-
-func (w *SSEWriter) sendEvent(id, event, data string) error {
-	if id != "" {
-		fmt.Fprintf(w.w, "id: %s\n", id)
-	}
-
-	fmt.Fprintf(w.w, "event: %s\n", event)
-
-	data = strings.TrimSpace(data)
-	for _, line := range strings.Split(data, "\n") {
-		fmt.Fprintf(w.w, "data: %s\n", line)
-	}
-	// Two newlines to separate events
-	fmt.Fprintln(w.w)
-
-	return w.rc.Flush()
 }
 
 func getBuildFromPath(s store.PGStore, w http.ResponseWriter, r *http.Request) (*store.Build, bool) {

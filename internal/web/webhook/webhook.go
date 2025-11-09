@@ -10,22 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ctbur/ci-server/v2/internal/config"
 	"github.com/ctbur/ci-server/v2/internal/store"
-	"github.com/ctbur/ci-server/v2/internal/web/auth"
 )
 
 type BuildCreator interface {
 	CreateBuild(ctx context.Context, repoOwner, repoName string, build store.BuildMeta, ts time.Time) (uint64, error)
-}
-
-func Handler(cfg *config.Config, userAuth auth.UserAuth, b BuildCreator) http.Handler {
-	mux := http.NewServeMux()
-
-	mux.Handle("POST /manual", userAuth.Middleware(handleManual(b, cfg)))
-	mux.Handle("POST /github", handleGitHub(b, cfg))
-
-	return mux
 }
 
 func decodeJSON[T any](body io.Reader) (*T, error) {

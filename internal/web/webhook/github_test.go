@@ -215,7 +215,7 @@ Co-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.c
 			c := MockBuildCreator{}
 
 			// When
-			webhook := http.Handler(handleGitHub(&c, &cfg))
+			webhook := http.Handler(HandleGitHub(&c, &cfg))
 
 			req := httptest.NewRequest(http.MethodPost, "/", nil)
 			req.Header = tc.header

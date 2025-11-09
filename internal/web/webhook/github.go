@@ -17,7 +17,7 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/web/wlog"
 )
 
-func handleGitHub(b BuildCreator, cfg *config.Config) http.HandlerFunc {
+func HandleGitHub(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := wlog.FromContext(r.Context())
 		ctx := r.Context()

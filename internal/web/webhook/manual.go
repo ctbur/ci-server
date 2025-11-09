@@ -25,7 +25,7 @@ type ManualResult struct {
 	BuildID uint64 `json:"build_id"`
 }
 
-func handleManual(b BuildCreator, cfg *config.Config) http.HandlerFunc {
+func HandleManual(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := wlog.FromContext(r.Context())
 		ctx := r.Context()
