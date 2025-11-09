@@ -31,7 +31,7 @@ type BuildDetailsPage struct {
 	LogLines  []LogLine
 }
 
-func HandleBuildDetails(db *store.DBStore, l store.LogStore, tmpl *template.Template) http.HandlerFunc {
+func HandleBuildDetails(db *store.DBStore, fs *store.FSStore, tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		log := wlog.FromContext(ctx)
@@ -43,7 +43,7 @@ func HandleBuildDetails(db *store.DBStore, l store.LogStore, tmpl *template.Temp
 
 		var logLines []LogLine
 		if build.Started != nil {
-			logs, err := l.GetLogs(ctx, build.ID)
+			logs, err := fs.GetLogs(ctx, build.ID)
 			if err != nil {
 				http.Error(w, "Failed to fetch logs", http.StatusInternalServerError)
 				log.ErrorContext(ctx, "Failed to fetch logs", slog.Any("error", err))
@@ -88,7 +88,7 @@ func HandleBuildDetails(db *store.DBStore, l store.LogStore, tmpl *template.Temp
 
 const LogPollPeriod = 500 * time.Millisecond
 
-func HandleLogStream(db *store.DBStore, l store.LogStore, tmpl *template.Template) http.HandlerFunc {
+func HandleLogStream(db *store.DBStore, fs *store.FSStore, tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		log := wlog.FromContext(ctx)
@@ -149,7 +149,7 @@ func HandleLogStream(db *store.DBStore, l store.LogStore, tmpl *template.Templat
 		}
 
 		// Wait for build to end
-		logTailer := l.TailLogs(build.ID, fromLine)
+		logTailer := fs.TailLogs(build.ID, fromLine)
 		defer logTailer.Close()
 
 		logNr := fromLine

@@ -19,30 +19,26 @@ const (
 	LogStreamStderr LogStream = "err"
 )
 
-type LogStore struct {
-	LogDir string
-}
-
 type LogEntry struct {
 	Stream    LogStream `json:"stream"`
 	Timestamp time.Time `json:"timestamp"`
 	Text      string    `json:"text"`
 }
 
-func (s LogStore) GetLogs(ctx context.Context, buildID uint64) ([]LogEntry, error) {
-	logFile := path.Join(s.LogDir, fmt.Sprintf("%d.jsonl", buildID))
+func (s *FSStore) GetLogs(ctx context.Context, buildID uint64) ([]LogEntry, error) {
+	LogFilePath := path.Join(s.RootDir, "build-logs", fmt.Sprintf("%d.jsonl", buildID))
 
 	// sec: Path is from a trusted user
-	file, err := os.Open(logFile) // #nosec G304
+	logFile, err := os.Open(LogFilePath) // #nosec G304
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil // Return no logs
 		}
-		return nil, fmt.Errorf("failed to open log file '%s': %w", logFile, err)
+		return nil, fmt.Errorf("failed to open log file '%s': %w", LogFilePath, err)
 	}
-	defer file.Close()
+	defer logFile.Close()
 
-	decoder := json.NewDecoder(file)
+	decoder := json.NewDecoder(logFile)
 	var logs []LogEntry
 
 	for {
@@ -52,7 +48,7 @@ func (s LogStore) GetLogs(ctx context.Context, buildID uint64) ([]LogEntry, erro
 		if errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
-			return nil, fmt.Errorf("failed to decode log entry from '%s': %w", logFile, err)
+			return nil, fmt.Errorf("failed to decode log entry from '%s': %w", LogFilePath, err)
 		}
 
 		logs = append(logs, entry)
@@ -61,9 +57,9 @@ func (s LogStore) GetLogs(ctx context.Context, buildID uint64) ([]LogEntry, erro
 	return logs, nil
 }
 
-func (s LogStore) TailLogs(buildID uint64, fromLine uint) *LogTailer {
+func (s FSStore) TailLogs(buildID uint64, fromLine uint) *LogTailer {
 	return &LogTailer{
-		logFilePath: path.Join(s.LogDir, fmt.Sprintf("%d.jsonl", buildID)),
+		logFilePath: path.Join(s.RootDir, "build-logs", fmt.Sprintf("%d.jsonl", buildID)),
 		fromLine:    fromLine,
 	}
 }

@@ -24,7 +24,7 @@ func Handler(
 	cfg *config.Config,
 	userAuth auth.UserAuth,
 	db *store.DBStore,
-	l store.LogStore,
+	fs *store.FSStore,
 	tmpl *template.Template,
 	staticFileDir string,
 ) http.Handler {
@@ -38,8 +38,8 @@ func Handler(
 
 	uiMux := http.NewServeMux()
 	uiMux.Handle("GET /{$}", ui.HandleBuildList(db, tmpl))
-	uiMux.Handle("GET /builds/{build_id}", ui.HandleBuildDetails(db, l, tmpl))
-	uiMux.Handle("GET /builds/{build_id}/log-stream", ui.HandleLogStream(db, l, tmpl))
+	uiMux.Handle("GET /builds/{build_id}", ui.HandleBuildDetails(db, fs, tmpl))
+	uiMux.Handle("GET /builds/{build_id}/log-stream", ui.HandleLogStream(db, fs, tmpl))
 	mux.Handle("/", userAuth.Middleware(uiMux))
 
 	return wlog.Middleware(mux)

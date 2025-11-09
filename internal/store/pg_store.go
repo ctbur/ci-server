@@ -23,8 +23,8 @@ type Repo struct {
 	Name  string
 }
 
-func (d DBStore) CreateRepoIfNotExists(ctx context.Context, repo Repo) error {
-	_, err := d.pool.Exec(
+func (s DBStore) CreateRepoIfNotExists(ctx context.Context, repo Repo) error {
+	_, err := s.pool.Exec(
 		ctx,
 		`INSERT INTO repos (owner, name)
 		VALUES ($1, $2)
@@ -35,9 +35,9 @@ func (d DBStore) CreateRepoIfNotExists(ctx context.Context, repo Repo) error {
 	return err
 }
 
-func (d DBStore) CountRepos(ctx context.Context) (uint64, error) {
+func (s DBStore) CountRepos(ctx context.Context) (uint64, error) {
 	var count uint64
-	err := d.pool.QueryRow(ctx, `SELECT COUNT(*) FROM repos`).Scan(&count)
+	err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM repos`).Scan(&count)
 	return count, err
 }
 
@@ -64,13 +64,13 @@ type BuildMeta struct {
 	Author    string
 }
 
-func (d DBStore) CreateBuild(
+func (s DBStore) CreateBuild(
 	ctx context.Context,
 	repoOwner, repoName string,
 	build BuildMeta,
 	ts time.Time,
 ) (uint64, error) {
-	tx, err := d.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -99,7 +99,7 @@ func (d DBStore) CreateBuild(
 	// Create build
 	var newID uint64
 
-	err = d.pool.QueryRow(
+	err = s.pool.QueryRow(
 		ctx,
 		`INSERT INTO builds (
 			repo_id,
@@ -134,14 +134,14 @@ func (d DBStore) CreateBuild(
 	return newID, err
 }
 
-func (d DBStore) StartBuild(
+func (s DBStore) StartBuild(
 	ctx context.Context,
 	buildID uint64,
 	started time.Time,
 	pid int,
 	cacheID *uint64,
 ) error {
-	tx, err := d.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -173,14 +173,14 @@ func (d DBStore) StartBuild(
 	return tx.Commit(ctx)
 }
 
-func (d DBStore) FinishBuild(
+func (s DBStore) FinishBuild(
 	ctx context.Context,
 	buildID uint64,
 	finished time.Time,
 	result BuildResult,
 	cacheBuildFiles bool,
 ) error {
-	tx, err := d.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -246,10 +246,10 @@ type Build struct {
 
 var ErrNoBuild error = errors.New("build does not exist")
 
-func (d DBStore) GetBuild(ctx context.Context, buildID uint64) (*Build, error) {
+func (s DBStore) GetBuild(ctx context.Context, buildID uint64) (*Build, error) {
 	var b Build
 
-	err := d.pool.QueryRow(
+	err := s.pool.QueryRow(
 		ctx,
 		`SELECT
 			b.id,
@@ -294,8 +294,8 @@ func (d DBStore) GetBuild(ctx context.Context, buildID uint64) (*Build, error) {
 	return &b, err
 }
 
-func (d DBStore) ListBuilds(ctx context.Context) ([]Build, error) {
-	rows, err := d.pool.Query(
+func (s DBStore) ListBuilds(ctx context.Context) ([]Build, error) {
+	rows, err := s.pool.Query(
 		ctx,
 		`SELECT
 			b.id,
@@ -351,8 +351,8 @@ type PendingBuild struct {
 	CommitSHA string
 }
 
-func (d DBStore) GetPendingBuilds(ctx context.Context) ([]PendingBuild, error) {
-	rows, err := d.pool.Query(
+func (s DBStore) GetPendingBuilds(ctx context.Context) ([]PendingBuild, error) {
+	rows, err := s.pool.Query(
 		ctx,
 		`SELECT
 			b.id,
@@ -396,8 +396,8 @@ type Builder struct {
 	CacheID   *uint64
 }
 
-func (d DBStore) ListBuilders(ctx context.Context) ([]Builder, error) {
-	rows, err := d.pool.Query(
+func (s DBStore) ListBuilders(ctx context.Context) ([]Builder, error) {
+	rows, err := s.pool.Query(
 		ctx,
 		`SELECT
 			br.pid,
@@ -434,8 +434,8 @@ func (d DBStore) ListBuilders(ctx context.Context) ([]Builder, error) {
 		})
 }
 
-func (d DBStore) ListBuildDirsInUse(ctx context.Context) ([]uint64, error) {
-	rows, err := d.pool.Query(
+func (s DBStore) ListBuildDirsInUse(ctx context.Context) ([]uint64, error) {
+	rows, err := s.pool.Query(
 		ctx,
 		// Keep build dirs, cache dirs in use, and repo cache dir
 		`(SELECT build_id FROM builders)
