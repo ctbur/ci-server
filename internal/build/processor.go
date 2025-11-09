@@ -52,13 +52,19 @@ type commitStatusCreator interface {
 func NewProcessor(
 	cfg *config.Config, dir *DataDir, s store.PGStore, gh *github.GitHubApp,
 ) *Processor {
+	// Ensure that interface is nil when gh is nil
+	var pgh commitStatusCreator
+	if gh != nil {
+		pgh = gh
+	}
+
 	return &Processor{
 		HostURL: cfg.HostURL,
 		Repos:   cfg.Repos,
 		Builds:  s,
 		Dir:     dir,
 		Builder: &BuilderController{Dir: dir},
-		GitHub:  gh,
+		GitHub:  pgh,
 	}
 }
 

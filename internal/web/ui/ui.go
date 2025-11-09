@@ -183,6 +183,8 @@ func shortCommitMessage(msg string) string {
 	return strings.SplitN(trimmed, "\n", 2)[0]
 }
 
+const LogPollPeriod = 500 * time.Millisecond
+
 func handleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -191,6 +193,29 @@ func handleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template)
 		build, ok := getBuildFromPath(s, w, r)
 		if !ok {
 			return
+		}
+
+		// Resolve starting log line
+		fromLineStr := r.URL.Query().Get("fromLine")
+		lastEventIDStr := r.Header.Get("Last-Event-Id")
+
+		fromLine := uint(0)
+		if lastEventIDStr != "" {
+			lastEventID, err := strconv.ParseUint(lastEventIDStr, 10, 32)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Last-Event-Id is not a number: %s", lastEventIDStr), http.StatusBadRequest)
+				return
+			}
+
+			fromLine = uint(lastEventID) + 1
+		} else if fromLineStr != "" {
+			fromLineU64, err := strconv.ParseUint(fromLineStr, 10, 32)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("fromLine is not a number: %s", fromLineStr), http.StatusBadRequest)
+				return
+			}
+
+			fromLine = uint(fromLineU64)
 		}
 
 		sseWriter := beginSSE(w)
@@ -210,7 +235,7 @@ func handleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template)
 			case <-ctx.Done():
 				return
 
-			case <-time.After(500 * time.Millisecond):
+			case <-time.After(LogPollPeriod):
 				continue
 			}
 		}
@@ -220,10 +245,11 @@ func handleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template)
 
 		// Wait for build to end
 		// TODO: set from log line
-		logTailer := l.TailLogs(build.ID, 0)
+		logTailer := l.TailLogs(build.ID, fromLine)
 		defer logTailer.Close()
 
-		logNr := uint(0)
+		logNr := fromLine
+		fmt.Println("Last event ID: ")
 		for {
 			logEntries, err := logTailer.Read()
 			if err != nil {
@@ -231,7 +257,7 @@ func handleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template)
 				return
 			}
 
-			for _, logEntry := range logEntries {
+			for i, logEntry := range logEntries {
 				b := bytes.Buffer{}
 				err := tmpl.ExecuteTemplate(&b, "comp_log_line", LogLine{
 					Number:         logNr,
@@ -243,8 +269,7 @@ func handleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template)
 					return
 				}
 
-				sseWriter.sendEvent("", "log-line", b.String())
-
+				sseWriter.sendEvent(strconv.Itoa(i), "log-line", b.String())
 				logNr++
 			}
 
@@ -261,7 +286,7 @@ func handleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template)
 			case <-ctx.Done():
 				return
 
-			case <-time.After(500 * time.Millisecond):
+			case <-time.After(LogPollPeriod):
 				continue
 			}
 		}
@@ -287,7 +312,11 @@ func beginSSE(w http.ResponseWriter) *SSEWriter {
 }
 
 func (w *SSEWriter) sendEvent(id, event, data string) error {
-	fmt.Fprintf(w.w, "id: %s\nevent: %s\n", id, event)
+	if id != "" {
+		fmt.Fprintf(w.w, "id: %s\n", id)
+	}
+
+	fmt.Fprintf(w.w, "event: %s\n", event)
 
 	data = strings.TrimSpace(data)
 	for _, line := range strings.Split(data, "\n") {
