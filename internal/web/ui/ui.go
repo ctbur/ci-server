@@ -106,27 +106,14 @@ func handleBuildDetails(s store.PGStore, l store.LogStore, tmpl *template.Templa
 		ctx := r.Context()
 		log := wlog.FromContext(ctx)
 
-		buildID, err := strconv.ParseUint(r.PathValue("build_id"), 10, 64)
-		if err != nil {
-			http.Error(w, "Invalid build ID", http.StatusNotFound)
-			return
-		}
-
-		build, err := s.GetBuild(ctx, buildID)
-		if err != nil {
-			http.Error(w, "Failed to fetch build", http.StatusInternalServerError)
-			log.ErrorContext(ctx, "Failed to fetch build", slog.Any("error", err))
-			return
-		}
-
-		if build == nil {
-			http.Error(w, "Build not found", http.StatusNotFound)
+		build, ok := getBuildFromPath(s, w, r)
+		if !ok {
 			return
 		}
 
 		var logLines []LogLine
 		if build.Started != nil {
-			logs, err := l.GetLogs(ctx, buildID)
+			logs, err := l.GetLogs(ctx, build.ID)
 			if err != nil {
 				http.Error(w, "Failed to fetch logs", http.StatusInternalServerError)
 				log.ErrorContext(ctx, "Failed to fetch logs", slog.Any("error", err))
@@ -156,7 +143,7 @@ func handleBuildDetails(s store.PGStore, l store.LogStore, tmpl *template.Templa
 		}
 
 		var b bytes.Buffer
-		err = tmpl.ExecuteTemplate(&b, "page_build_details", params)
+		err := tmpl.ExecuteTemplate(&b, "page_build_details", params)
 		if err != nil {
 			http.Error(w, "Failed to render template", http.StatusInternalServerError)
 			log.ErrorContext(ctx, "Failed to render template", slog.Any("error", err))
@@ -201,21 +188,8 @@ func handleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template)
 		ctx := r.Context()
 		log := wlog.FromContext(ctx)
 
-		buildID, err := strconv.ParseUint(r.PathValue("build_id"), 10, 64)
-		if err != nil {
-			http.Error(w, "Invalid build ID", http.StatusNotFound)
-			return
-		}
-
-		build, err := s.GetBuild(ctx, buildID)
-		if err != nil {
-			http.Error(w, "Failed to fetch build", http.StatusInternalServerError)
-			log.ErrorContext(ctx, "Failed to fetch build", slog.Any("error", err))
-			return
-		}
-
-		if build == nil {
-			http.Error(w, "Build not found", http.StatusNotFound)
+		_, ok := getBuildFromPath(s, w, r)
+		if !ok {
 			return
 		}
 
@@ -279,4 +253,29 @@ func (w *SSEWriter) sendEvent(id, event, data string) error {
 	fmt.Fprintln(w.w)
 
 	return w.rc.Flush()
+}
+
+func getBuildFromPath(s store.PGStore, w http.ResponseWriter, r *http.Request) (*store.Build, bool) {
+	ctx := r.Context()
+	log := wlog.FromContext(ctx)
+
+	buildID, err := strconv.ParseUint(r.PathValue("build_id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid build ID", http.StatusNotFound)
+		return nil, false
+	}
+
+	build, err := s.GetBuild(ctx, buildID)
+	if err != nil {
+		http.Error(w, "Failed to fetch build", http.StatusInternalServerError)
+		log.ErrorContext(ctx, "Failed to fetch build", slog.Any("error", err))
+		return nil, false
+	}
+
+	if build == nil {
+		http.Error(w, "Build not found", http.StatusNotFound)
+		return nil, false
+	}
+
+	return build, true
 }
