@@ -13,11 +13,8 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/store"
 )
 
-// make logging concern of runner
-// add datadir as field
-
 type CmdRunner struct {
-	Dir *DataDir
+	FS *store.FSStore
 }
 
 func (r *CmdRunner) Run(
@@ -43,7 +40,7 @@ func (r *CmdRunner) Run(
 	execCmd := exec.Command(cmd[0], cmd[1:]...) // #nosec G204
 	execCmd.Env = env
 
-	logWriter, err := r.Dir.OpenBuildLogs(buildID)
+	logWriter, err := r.FS.OpenBuildLogs(buildID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open build logs: %w", err)
 	}

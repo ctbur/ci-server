@@ -1,4 +1,4 @@
-package build
+package store
 
 import (
 	"bytes"
@@ -32,17 +32,17 @@ import (
  * is moved to the cache dir.
  */
 
-type DataDir struct {
+type FSStore struct {
 	RootDir string
 }
 
-func (d *DataDir) WriteExitCode(buildID uint64, exitCode int) error {
-	exitCodePath := path.Join(d.RootDir, "exit-code", strconv.FormatUint(buildID, 10))
+func (f *FSStore) WriteExitCode(buildID uint64, exitCode int) error {
+	exitCodePath := path.Join(f.RootDir, "exit-code", strconv.FormatUint(buildID, 10))
 	return os.WriteFile(exitCodePath, []byte(strconv.Itoa(exitCode)), 0o600)
 }
 
-func (d *DataDir) ReadAndCleanExitCode(buildID uint64) (int, error) {
-	exitCodeFile := path.Join(d.RootDir, "exit-code", strconv.FormatUint(buildID, 10))
+func (f *FSStore) ReadAndCleanExitCode(buildID uint64) (int, error) {
+	exitCodeFile := path.Join(f.RootDir, "exit-code", strconv.FormatUint(buildID, 10))
 	// sec: Path is from a trusted user
 	data, err := os.ReadFile(exitCodeFile) // #nosec G304
 	if err != nil {
@@ -65,13 +65,13 @@ func (d *DataDir) ReadAndCleanExitCode(buildID uint64) (int, error) {
 // checkoutDir. If the cacheID is given, files from the build dir with the same
 // ID are copied into the directory beforehand.
 // It returns the absolute build dir path, or the first error encountered.
-func (d *DataDir) CreateBuildDir(
+func (f *FSStore) CreateBuildDir(
 	buildID uint64, cacheID *uint64, checkoutDir string,
 ) (string, error) {
-	buildDir := path.Join(d.RootDir, "build", strconv.FormatUint(buildID, 10))
+	buildDir := path.Join(f.RootDir, "build", strconv.FormatUint(buildID, 10))
 
 	if cacheID != nil {
-		cacheDir := path.Join(d.RootDir, "build", strconv.FormatUint(*cacheID, 10))
+		cacheDir := path.Join(f.RootDir, "build", strconv.FormatUint(*cacheID, 10))
 		// copyDirs will create the build dir
 		if err := copyDirs(cacheDir, buildDir); err != nil {
 			return "", fmt.Errorf(
@@ -113,8 +113,8 @@ func copyDirs(src, dst string) error {
 	return nil
 }
 
-func (d *DataDir) RetainBuildDirs(retainedIDs []uint64) ([]uint64, error) {
-	buildRootDir := path.Join(d.RootDir, "build")
+func (f *FSStore) RetainBuildDirs(retainedIDs []uint64) ([]uint64, error) {
+	buildRootDir := path.Join(f.RootDir, "build")
 	entries, err := os.ReadDir(buildRootDir)
 	if err != nil {
 		return nil, err
@@ -171,30 +171,30 @@ func removeAll(path string) error {
 	return os.RemoveAll(path)
 }
 
-func (d *DataDir) CreateRootDirs() error {
-	if err := os.MkdirAll(path.Join(d.RootDir, "build-logs"), 0o700); err != nil {
+func (f *FSStore) CreateRootDirs() error {
+	if err := os.MkdirAll(path.Join(f.RootDir, "build-logs"), 0o700); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(path.Join(d.RootDir, "builder-logs"), 0o700); err != nil {
+	if err := os.MkdirAll(path.Join(f.RootDir, "builder-logs"), 0o700); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(path.Join(d.RootDir, "exit-code"), 0o700); err != nil {
+	if err := os.MkdirAll(path.Join(f.RootDir, "exit-code"), 0o700); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(path.Join(d.RootDir, "build"), 0o700); err != nil {
+	if err := os.MkdirAll(path.Join(f.RootDir, "build"), 0o700); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (d *DataDir) OpenBuildLogs(buildID uint64) (io.WriteCloser, error) {
-	logFilePath := path.Join(d.RootDir, "build-logs", fmt.Sprintf("%d.jsonl", buildID))
+func (f *FSStore) OpenBuildLogs(buildID uint64) (io.WriteCloser, error) {
+	logFilePath := path.Join(f.RootDir, "build-logs", fmt.Sprintf("%d.jsonl", buildID))
 	// sec: Path is from a trusted user
 	return os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) // #nosec G304
 }
 
-func (d *DataDir) OpenBuilderLogs(buildID uint64) (io.WriteCloser, error) {
-	logFilePath := path.Join(d.RootDir, "builder-logs", fmt.Sprintf("%d.txt", buildID))
+func (f *FSStore) OpenBuilderLogs(buildID uint64) (io.WriteCloser, error) {
+	logFilePath := path.Join(f.RootDir, "builder-logs", fmt.Sprintf("%d.txt", buildID))
 	// sec: Path is from a trusted user
 	return os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) // #nosec G304
 }

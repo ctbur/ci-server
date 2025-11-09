@@ -111,10 +111,10 @@ func runServer() error {
 		return fmt.Errorf("failed to init repositories: %w", err)
 	}
 
-	dataDir := build.DataDir{
+	fsStore := store.FSStore{
 		RootDir: cfg.DataDir,
 	}
-	if err := dataDir.CreateRootDirs(); err != nil {
+	if err := fsStore.CreateRootDirs(); err != nil {
 		return fmt.Errorf("failed to create dirs under %s: %w", cfg.DataDir, err)
 	}
 
@@ -138,14 +138,14 @@ func runServer() error {
 		)
 	}
 
-	processor := build.NewProcessor(cfg, &dataDir, pgStore, githubApp)
+	processor := build.NewProcessor(cfg, &fsStore, &pgStore, githubApp)
 	go processor.Run(slog.Default(), ctx)
 
 	logStore := store.LogStore{
 		LogDir: path.Join(cfg.DataDir, "build-logs"),
 	}
 	staticFileDir := path.Join(*libDir, "ui/static/")
-	handler := web.Handler(cfg, userAuth, pgStore, logStore, tmpl, staticFileDir)
+	handler := web.Handler(cfg, userAuth, &pgStore, logStore, tmpl, staticFileDir)
 	err = web.RunServer(slog.Default(), handler, 8000)
 	if err != nil {
 		return fmt.Errorf("error during web server execution: %w", err)

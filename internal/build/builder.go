@@ -8,16 +8,18 @@ import (
 	"os"
 	"os/exec"
 	"path"
+
+	"github.com/ctbur/ci-server/v2/internal/store"
 )
 
 type Builder struct {
-	Dir              builderDataDir
+	FS               builderFSStore
 	Git              git
 	RepoURLFormatter func(owner, name string) string
 	Cmd              cmdRunner
 }
 
-type builderDataDir interface {
+type builderFSStore interface {
 	CreateBuildDir(buildID uint64, cacheID *uint64, checkoutDir string) (string, error)
 	WriteExitCode(buildID uint64, exitCode int) error
 }
@@ -45,12 +47,12 @@ func RunBuilder() error {
 		return fmt.Errorf("failed to unmarshal build params JSON '%s': %w", paramsJSON, err)
 	}
 
-	dataDir := &DataDir{RootDir: p.DataDir}
+	fs := &store.FSStore{RootDir: p.DataDir}
 	br := Builder{
-		Dir:              dataDir,
+		FS:               fs,
 		Git:              &Git{},
 		RepoURLFormatter: githubRepoURL,
-		Cmd:              &CmdRunner{dataDir},
+		Cmd:              &CmdRunner{fs},
 	}
 
 	return br.run(slog.Default(), p)
@@ -62,7 +64,7 @@ func (br *Builder) run(log *slog.Logger, p BuilderParams) error {
 		return fmt.Errorf("build failed: %w", err)
 	}
 
-	if err := br.Dir.WriteExitCode(p.BuildID, exitCode); err != nil {
+	if err := br.FS.WriteExitCode(p.BuildID, exitCode); err != nil {
 		return fmt.Errorf("failed to write exit code: %w", err)
 	}
 	slog.Info("Wrote exit code", slog.Int("exit_code", exitCode))
@@ -78,7 +80,7 @@ func (br *Builder) runBuild(log *slog.Logger, p BuilderParams) (int, error) {
 		log.Info("Starting from an empty build dir")
 	}
 	checkoutDir := path.Join(p.RepoOwner, p.RepoName)
-	absBuildDir, err := br.Dir.CreateBuildDir(
+	absBuildDir, err := br.FS.CreateBuildDir(
 		p.BuildID, p.CacheID,
 		checkoutDir,
 	)

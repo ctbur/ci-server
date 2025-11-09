@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/ctbur/ci-server/v2/internal/assert"
+	"github.com/ctbur/ci-server/v2/internal/store"
 	"github.com/ctbur/ci-server/v2/internal/test"
 )
 
@@ -84,7 +85,7 @@ func TestBuilderE2E(t *testing.T) {
 
 	// Init DataDir
 	dataDirPath := path.Join(testDir, "data-dir")
-	dataDir := DataDir{
+	dataDir := store.FSStore{
 		RootDir: dataDirPath,
 	}
 	err = dataDir.CreateRootDirs()
@@ -143,12 +144,12 @@ func TestBuilderE2E(t *testing.T) {
 	}
 
 	br := Builder{
-		Dir: &dataDir,
+		FS:  &dataDir,
 		Git: &Git{},
 		RepoURLFormatter: func(owner, name string) string {
 			return fmt.Sprintf("file://%s", repoDir)
 		},
-		Cmd: &CmdRunner{Dir: &dataDir},
+		Cmd: &CmdRunner{FS: &dataDir},
 	}
 
 	log := test.Logger(t)
@@ -388,7 +389,7 @@ func TestBuilder(t *testing.T) {
 				MockResults: tc.cmdResults,
 			}
 			br := Builder{
-				Dir:              &dataDir,
+				FS:               &dataDir,
 				Git:              &git,
 				RepoURLFormatter: githubRepoURL,
 				Cmd:              &cmdRunner,
