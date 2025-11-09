@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -19,6 +20,7 @@ func Handler(cfg *config.Config, s store.PGStore, l store.LogStore, tmpl *templa
 
 	mux.Handle("GET /{$}", handleBuildList(s, tmpl))
 	mux.Handle("GET /builds/{build_id}", handleBuildDetails(s, l, tmpl))
+	mux.Handle("GET /builds/{build_id}/log-stream", handleLogStream(s, l, tmpl))
 
 	return mux
 }
@@ -82,11 +84,13 @@ func handleBuildList(s store.PGStore, tmpl *template.Template) http.HandlerFunc 
 }
 
 type LogLine struct {
+	Number         uint
 	Text           string
 	TimeSinceStart time.Duration
 }
 
 type BuildDetailsPage struct {
+	ID        uint64
 	RepoOwner string
 	RepoName  string
 	Status    string
@@ -100,6 +104,7 @@ type BuildDetailsPage struct {
 func handleBuildDetails(s store.PGStore, l store.LogStore, tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
+		log := wlog.FromContext(ctx)
 
 		buildID, err := strconv.ParseUint(r.PathValue("build_id"), 10, 64)
 		if err != nil {
@@ -110,7 +115,7 @@ func handleBuildDetails(s store.PGStore, l store.LogStore, tmpl *template.Templa
 		build, err := s.GetBuild(ctx, buildID)
 		if err != nil {
 			http.Error(w, "Failed to fetch build", http.StatusInternalServerError)
-			slog.ErrorContext(ctx, "Failed to fetch build", slog.Any("error", err))
+			log.ErrorContext(ctx, "Failed to fetch build", slog.Any("error", err))
 			return
 		}
 
@@ -119,22 +124,27 @@ func handleBuildDetails(s store.PGStore, l store.LogStore, tmpl *template.Templa
 			return
 		}
 
-		logs, err := l.GetLogs(ctx, buildID)
-		if err != nil {
-			http.Error(w, "Failed to fetch logs", http.StatusInternalServerError)
-			slog.ErrorContext(ctx, "Failed to fetch logs", slog.Any("error", err))
-			return
-		}
+		var logLines []LogLine
+		if build.Started != nil {
+			logs, err := l.GetLogs(ctx, buildID)
+			if err != nil {
+				http.Error(w, "Failed to fetch logs", http.StatusInternalServerError)
+				log.ErrorContext(ctx, "Failed to fetch logs", slog.Any("error", err))
+				return
+			}
 
-		logLines := make([]LogLine, len(logs))
-		for i, log := range logs {
-			logLines[i] = LogLine{
-				Text:           log.Text,
-				TimeSinceStart: log.Timestamp.Sub(logs[0].Timestamp),
+			logLines = make([]LogLine, len(logs))
+			for i, log := range logs {
+				logLines[i] = LogLine{
+					Number:         uint(i),
+					Text:           log.Text,
+					TimeSinceStart: log.Timestamp.Sub(*build.Started),
+				}
 			}
 		}
 
 		params := &BuildDetailsPage{
+			ID:        build.ID,
 			RepoOwner: build.Repo.Owner,
 			RepoName:  build.Repo.Name,
 			Status:    buildStatus(*build),
@@ -149,7 +159,7 @@ func handleBuildDetails(s store.PGStore, l store.LogStore, tmpl *template.Templa
 		err = tmpl.ExecuteTemplate(&b, "page_build_details", params)
 		if err != nil {
 			http.Error(w, "Failed to render template", http.StatusInternalServerError)
-			slog.ErrorContext(ctx, "Failed to render template", slog.Any("error", err))
+			log.ErrorContext(ctx, "Failed to render template", slog.Any("error", err))
 			return
 		}
 
@@ -184,4 +194,69 @@ func buildStatus(b store.Build) string {
 func shortCommitMessage(msg string) string {
 	trimmed := strings.TrimSpace(msg)
 	return strings.SplitN(trimmed, "\n", 2)[0]
+}
+
+func handleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		log := wlog.FromContext(ctx)
+
+		buildID, err := strconv.ParseUint(r.PathValue("build_id"), 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid build ID", http.StatusNotFound)
+			return
+		}
+
+		build, err := s.GetBuild(ctx, buildID)
+		if err != nil {
+			http.Error(w, "Failed to fetch build", http.StatusInternalServerError)
+			log.ErrorContext(ctx, "Failed to fetch build", slog.Any("error", err))
+			return
+		}
+
+		if build == nil {
+			http.Error(w, "Build not found", http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+
+		rc := http.NewResponseController(w)
+
+		for i := range 10 {
+			// Check for client disconnect
+			ticker := time.NewTicker(1000 * time.Millisecond)
+			defer ticker.Stop()
+
+			select {
+			case <-ctx.Done():
+				log.DebugContext(ctx, "Client disconnected")
+				return
+
+				// TODO: use time.After
+			case <-ticker.C:
+				logLine := LogLine{
+					Number:         uint(i),
+					Text:           fmt.Sprintf("This is SSE line %d", i),
+					TimeSinceStart: time.Second,
+				}
+				b := bytes.Buffer{}
+				err := tmpl.ExecuteTemplate(&b, "comp_log_line", logLine)
+				if err != nil {
+					log.ErrorContext(ctx, "Failed to write logs", slog.Any("error", err))
+					return
+				}
+
+				fmt.Println(b.String())
+				lines := strings.Split(strings.TrimSpace(b.String()), "\n")
+				fmt.Fprintf(w, "event: log-line\ndata: %s\n\n", strings.Join(lines, "\ndata: "))
+
+				rc.Flush()
+			}
+		}
+
+		fmt.Fprint(w, "event: end-stream\ndata:\n\n")
+	}
 }
