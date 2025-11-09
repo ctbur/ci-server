@@ -53,7 +53,8 @@ func HandleBuildDetails(s store.PGStore, l store.LogStore, tmpl *template.Templa
 			logLines = make([]LogLine, len(logs))
 			for i, log := range logs {
 				logLines[i] = LogLine{
-					Number:         uint(i),
+					// sec: Overflow not practical
+					Number:         uint(i), // #nosec G115
 					Text:           log.Text,
 					TimeSinceStart: log.Timestamp.Sub(*build.Started),
 				}
@@ -142,7 +143,10 @@ func HandleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template)
 			}
 		}
 
-		sseWriter.sendEvent("", "build-started", "")
+		if err := sseWriter.sendEvent("", "build-started", ""); err != nil {
+			log.ErrorContext(ctx, "Failed to send event", slog.Any("error", err))
+			return
+		}
 
 		// Wait for build to end
 		logTailer := l.TailLogs(build.ID, fromLine)
@@ -168,7 +172,10 @@ func HandleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template)
 					return
 				}
 
-				sseWriter.sendEvent(strconv.Itoa(i), "log-line", b.String())
+				if err := sseWriter.sendEvent(strconv.Itoa(i), "log-line", b.String()); err != nil {
+					log.ErrorContext(ctx, "Failed to send event", slog.Any("error", err))
+					return
+				}
 				logNr++
 			}
 
@@ -190,7 +197,10 @@ func HandleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template)
 			}
 		}
 
-		sseWriter.sendEvent("", "build-finished", "")
+		if err := sseWriter.sendEvent("", "build-finished", ""); err != nil {
+			log.ErrorContext(ctx, "Failed to send event", slog.Any("error", err))
+			return
+		}
 	}
 }
 
