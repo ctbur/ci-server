@@ -247,7 +247,6 @@ func handleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template)
 		defer logTailer.Close()
 
 		logNr := fromLine
-		fmt.Println("Last event ID: ")
 		for {
 			logEntries, err := logTailer.Read()
 			if err != nil {
