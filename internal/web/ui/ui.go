@@ -219,12 +219,7 @@ func handleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template)
 			return
 		}
 
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
-
-		rc := http.NewResponseController(w)
-
+		sseWriter := beginSSE(w)
 		for i := range 10 {
 			// Check for client disconnect
 			ticker := time.NewTicker(1000 * time.Millisecond)
@@ -249,14 +244,39 @@ func handleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template)
 					return
 				}
 
-				fmt.Println(b.String())
-				lines := strings.Split(strings.TrimSpace(b.String()), "\n")
-				fmt.Fprintf(w, "event: log-line\ndata: %s\n\n", strings.Join(lines, "\ndata: "))
-
-				rc.Flush()
+				sseWriter.sendEvent(strconv.Itoa(i), "log-line", b.String())
 			}
 		}
 
-		fmt.Fprint(w, "event: end-stream\ndata:\n\n")
+		sseWriter.sendEvent("end", "end-stream", "")
 	}
+}
+
+type SSEWriter struct {
+	w  http.ResponseWriter
+	rc *http.ResponseController
+}
+
+func beginSSE(w http.ResponseWriter) *SSEWriter {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	// Flush headers immediately
+	w.WriteHeader(http.StatusOK)
+
+	rc := http.NewResponseController(w)
+	return &SSEWriter{w, rc}
+}
+
+func (w *SSEWriter) sendEvent(id, event, data string) error {
+	fmt.Fprintf(w.w, "id: %s\nevent: %s\n", id, event)
+
+	data = strings.TrimSpace(data)
+	for _, line := range strings.Split(data, "\n") {
+		fmt.Fprintf(w.w, "data: %s\n", line)
+	}
+	// Two newlines to separate events
+	fmt.Fprintln(w.w)
+
+	return w.rc.Flush()
 }
