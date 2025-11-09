@@ -188,41 +188,85 @@ func handleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template)
 		ctx := r.Context()
 		log := wlog.FromContext(ctx)
 
-		_, ok := getBuildFromPath(s, w, r)
+		build, ok := getBuildFromPath(s, w, r)
 		if !ok {
 			return
 		}
 
 		sseWriter := beginSSE(w)
-		for i := range 10 {
-			// Check for client disconnect
-			ticker := time.NewTicker(1000 * time.Millisecond)
-			defer ticker.Stop()
+
+		// Wait for build to start
+		for {
+			build, err := s.GetBuild(ctx, build.ID)
+			if err != nil {
+				log.ErrorContext(ctx, "Failed to get build", slog.Any("error", err))
+				return
+			}
+			if build.Started != nil {
+				break
+			}
 
 			select {
 			case <-ctx.Done():
-				log.DebugContext(ctx, "Client disconnected")
 				return
 
-				// TODO: use time.After
-			case <-ticker.C:
-				logLine := LogLine{
-					Number:         uint(i),
-					Text:           fmt.Sprintf("This is SSE line %d", i),
-					TimeSinceStart: time.Second,
-				}
-				b := bytes.Buffer{}
-				err := tmpl.ExecuteTemplate(&b, "comp_log_line", logLine)
-				if err != nil {
-					log.ErrorContext(ctx, "Failed to write logs", slog.Any("error", err))
-					return
-				}
-
-				sseWriter.sendEvent(strconv.Itoa(i), "log-line", b.String())
+			case <-time.After(500 * time.Millisecond):
+				continue
 			}
 		}
 
-		sseWriter.sendEvent("end", "end-stream", "")
+		// TODO: figure out last ID thing
+		sseWriter.sendEvent("", "build-started", "")
+
+		// Wait for build to end
+		// TODO: set from log line
+		logTailer := l.TailLogs(build.ID, 0)
+		defer logTailer.Close()
+
+		logNr := uint(0)
+		for {
+			logEntries, err := logTailer.Read()
+			if err != nil {
+				log.ErrorContext(ctx, "Failed to tail logs", slog.Any("error", err))
+				return
+			}
+
+			for _, logEntry := range logEntries {
+				b := bytes.Buffer{}
+				err := tmpl.ExecuteTemplate(&b, "comp_log_line", LogLine{
+					Number:         logNr,
+					Text:           logEntry.Text,
+					TimeSinceStart: logEntry.Timestamp.Sub(*build.Started),
+				})
+				if err != nil {
+					log.ErrorContext(ctx, "Failed to run log template", slog.Any("error", err))
+					return
+				}
+
+				sseWriter.sendEvent("", "log-line", b.String())
+
+				logNr++
+			}
+
+			build, err := s.GetBuild(ctx, build.ID)
+			if err != nil {
+				log.ErrorContext(ctx, "Failed to get build", slog.Any("error", err))
+				return
+			}
+			if build.Finished != nil {
+				break
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+
+			case <-time.After(500 * time.Millisecond):
+				continue
+			}
+		}
+
+		sseWriter.sendEvent("", "build-finished", "")
 	}
 }
 

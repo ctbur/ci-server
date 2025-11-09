@@ -61,100 +61,54 @@ func (s LogStore) GetLogs(ctx context.Context, buildID uint64) ([]LogEntry, erro
 	return logs, nil
 }
 
-const LogStreamPollInterval = 500 * time.Millisecond
+func (s LogStore) TailLogs(buildID uint64, fromLine uint) *LogTailer {
+	return &LogTailer{
+		logFilePath: path.Join(s.LogDir, fmt.Sprintf("%d.jsonl", buildID)),
+		fromLine:    fromLine,
+	}
+}
 
-func (s LogStore) StreamLogs(
-	ctx context.Context, buildID uint64, fromLine uint64,
-) (<-chan LogEntry, <-chan error) {
-	logChan := make(chan LogEntry)
-	// Error channel is buffered to allow deferred functions to run on failed
-	errChan := make(chan error, 1)
+type LogTailer struct {
+	logFilePath string
+	logFile     *os.File
+	logReader   *bufio.Reader
+	fromLine    uint
+	currentLine uint
+}
 
-	logFile := path.Join(s.LogDir, fmt.Sprintf("%d.jsonl", buildID))
-
-	go func() {
-		defer close(logChan)
-		defer close(errChan)
-
-		// Wait for file to be created and open it
-		var file *os.File
-		var openErr error
-		for {
-			// sec: Path is from a trusted user
-			file, openErr = os.Open(logFile) // #nosec G304
-			if openErr == nil {
-				// Successfully opened file
-				break
-			}
-
-			if !errors.Is(openErr, os.ErrNotExist) {
-				// Other error occurred
-				errChan <- fmt.Errorf("failed to open log file '%s': %w", logFile, openErr)
-				return
-			}
-
-			// File doesn't exist - wait and try again
-			select {
-			case <-ctx.Done():
-				errChan <- ctx.Err()
-				return
-			case <-time.After(LogStreamPollInterval):
-				continue
-			}
+func (t *LogTailer) Read() ([]LogEntry, error) {
+	// Open log file if not yet open
+	if t.logReader == nil {
+		file, err := os.Open(t.logFilePath)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		} else if err != nil {
+			return nil, err
 		}
-		defer file.Close()
 
-		// Tail the log file
-		reader := bufio.NewReader(file)
-		logOffset := uint64(0)
-		for {
-			// Read lines until blocked
-			var line string
-			var readErr error
-			for {
-				line, readErr = reader.ReadString('\n')
-				if readErr != nil {
-					break
-				}
+		t.logFile = file
+		t.logReader = bufio.NewReader(file)
+	}
 
-				if logOffset >= fromLine {
-					var logEntry LogEntry
-					err := json.Unmarshal([]byte(line), &logEntry)
-					if err != nil {
-						errChan <- fmt.Errorf("failure unmarshalling log line: %w", err)
-						return
-					}
-
-					// Send log entry
-					select {
-					// Exit in case log entry is not read before context is cancelled
-					case <-ctx.Done():
-						errChan <- ctx.Err()
-						return
-					case logChan <- logEntry:
-						// Success
-					}
-				}
-				logOffset++
-			}
-
-			if !errors.Is(readErr, io.EOF) {
-				// Other error occurred
-				errChan <- fmt.Errorf("failure while tailing log file '%s': %w", logFile, readErr)
-				return
-			}
-
-			// EOF was reached before ReadString() found a newline
-			// The partial line read is still buffered inside the reader
-			select {
-			case <-ctx.Done():
-				errChan <- ctx.Err()
-				return
-			case <-time.After(LogStreamPollInterval):
-				continue
-			}
+	// Read until blocked
+	var logEntries []LogEntry
+	for {
+		line, err := t.logReader.ReadString('\n')
+		if errors.Is(err, io.EOF) {
+			return logEntries, nil
+		} else if err != nil {
+			return logEntries, err
 		}
-	}()
 
-	return logChan, errChan
+		var logEntry LogEntry
+		err = json.Unmarshal([]byte(line), &logEntry)
+		logEntries = append(logEntries, logEntry)
+	}
+}
+
+func (t *LogTailer) Close() error {
+	if t.logFile != nil {
+		return t.logFile.Close()
+	}
+	return nil
 }

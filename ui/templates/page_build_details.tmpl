@@ -31,7 +31,7 @@
                     sse-swap="log-line"
                     hx-swap="beforeend"
                     hx-target="#log-container"
-                    sse-close="end-stream"
+                    sse-close="build-finished"
                 ></div>
                 <div id="log-container" class="log-container">
                     {{- range $i, $e := .LogLines }}
