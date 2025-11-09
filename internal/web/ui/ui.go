@@ -240,11 +240,9 @@ func handleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template)
 			}
 		}
 
-		// TODO: figure out last ID thing
 		sseWriter.sendEvent("", "build-started", "")
 
 		// Wait for build to end
-		// TODO: set from log line
 		logTailer := l.TailLogs(build.ID, fromLine)
 		defer logTailer.Close()
 
