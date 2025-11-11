@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/config"
+	"github.com/ctbur/ci-server/v2/internal/ctxlog"
 	"github.com/ctbur/ci-server/v2/internal/store"
-	"github.com/ctbur/ci-server/v2/internal/web/wlog"
 )
 
 type ManualPayload struct {
@@ -27,7 +27,7 @@ type ManualResult struct {
 
 func HandleManual(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		log := wlog.FromContext(r.Context())
+		log := ctxlog.FromContext(r.Context())
 		ctx := r.Context()
 
 		payload, err := decodeJSON[ManualPayload](r.Body)

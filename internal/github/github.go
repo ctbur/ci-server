@@ -10,8 +10,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/ctbur/ci-server/v2/internal/ctxlog"
 )
 
 type GitHubApp struct {
@@ -151,6 +154,13 @@ func (a *GitHubApp) CreateCommitStatus(
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
+
+	log := ctxlog.FromContext(ctx)
+	log.DebugContext(ctx,
+		"CreateCommitStatus",
+		slog.String("client", "github"),
+		slog.String("payload", string(payloadBytes)),
+	)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payloadBytes))
 	if err != nil {

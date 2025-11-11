@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ctbur/ci-server/v2/internal/ctxlog"
 	"github.com/ctbur/ci-server/v2/internal/store"
-	"github.com/ctbur/ci-server/v2/internal/web/wlog"
 )
 
 type LogLine struct {
@@ -34,7 +34,7 @@ type BuildDetailsPage struct {
 func HandleBuildDetails(db *store.DBStore, fs *store.FSStore, tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		log := wlog.FromContext(ctx)
+		log := ctxlog.FromContext(ctx)
 
 		build, ok := getBuildFromPath(db, w, r)
 		if !ok {
@@ -91,7 +91,7 @@ const LogPollPeriod = 500 * time.Millisecond
 func HandleLogStream(db *store.DBStore, fs *store.FSStore, tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		log := wlog.FromContext(ctx)
+		log := ctxlog.FromContext(ctx)
 
 		build, ok := getBuildFromPath(db, w, r)
 		if !ok {
@@ -207,7 +207,7 @@ func HandleLogStream(db *store.DBStore, fs *store.FSStore, tmpl *template.Templa
 
 func getBuildFromPath(db *store.DBStore, w http.ResponseWriter, r *http.Request) (*store.Build, bool) {
 	ctx := r.Context()
-	log := wlog.FromContext(ctx)
+	log := ctxlog.FromContext(ctx)
 
 	buildID, err := strconv.ParseUint(r.PathValue("build_id"), 10, 64)
 	if err != nil {

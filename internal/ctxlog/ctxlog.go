@@ -1,4 +1,4 @@
-package wlog
+package ctxlog
 
 import (
 	"context"
