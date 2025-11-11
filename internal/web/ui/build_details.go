@@ -160,7 +160,7 @@ func HandleLogStream(db *store.DBStore, fs *store.FSStore, tmpl *template.Templa
 				return
 			}
 
-			for i, logEntry := range logEntries {
+			for _, logEntry := range logEntries {
 				b := bytes.Buffer{}
 				err := tmpl.ExecuteTemplate(&b, "comp_log_line", LogLine{
 					Number:         logNr,
@@ -172,7 +172,8 @@ func HandleLogStream(db *store.DBStore, fs *store.FSStore, tmpl *template.Templa
 					return
 				}
 
-				if err := sseWriter.sendEvent(strconv.Itoa(i), "log-line", b.String()); err != nil {
+				err = sseWriter.sendEvent(strconv.FormatUint(uint64(logNr), 10), "log-line", b.String())
+				if err != nil {
 					log.ErrorContext(ctx, "Failed to send event", slog.Any("error", err))
 					return
 				}

@@ -96,8 +96,17 @@ func (t *LogTailer) Read() ([]LogEntry, error) {
 			return logEntries, err
 		}
 
+		// Skip lines before fromLine
+		t.currentLine++
+		if t.currentLine < t.fromLine {
+			continue
+		}
+
 		var logEntry LogEntry
 		err = json.Unmarshal([]byte(line), &logEntry)
+		if err != nil {
+			return logEntries, fmt.Errorf("failed to unmarshal log entry: %w", err)
+		}
 		logEntries = append(logEntries, logEntry)
 	}
 }
