@@ -7,15 +7,24 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+type DBStore struct {
+	pool *pgxpool.Pool
+}
+
+func NewPGStore(conn *pgxpool.Pool) DBStore {
+	return DBStore{conn}
+}
 
 type Repo struct {
 	Owner string
 	Name  string
 }
 
-func (s PGStore) CreateRepoIfNotExists(ctx context.Context, repo Repo) error {
-	_, err := s.pool.Exec(
+func (db DBStore) CreateRepoIfNotExists(ctx context.Context, repo Repo) error {
+	_, err := db.pool.Exec(
 		ctx,
 		`INSERT INTO repos (owner, name)
 		VALUES ($1, $2)
@@ -26,9 +35,9 @@ func (s PGStore) CreateRepoIfNotExists(ctx context.Context, repo Repo) error {
 	return err
 }
 
-func (s PGStore) CountRepos(ctx context.Context) (uint64, error) {
+func (db DBStore) CountRepos(ctx context.Context) (uint64, error) {
 	var count uint64
-	err := s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM repos`).Scan(&count)
+	err := db.pool.QueryRow(ctx, `SELECT COUNT(*) FROM repos`).Scan(&count)
 	return count, err
 }
 
@@ -55,13 +64,13 @@ type BuildMeta struct {
 	Author    string
 }
 
-func (s PGStore) CreateBuild(
+func (db DBStore) CreateBuild(
 	ctx context.Context,
 	repoOwner, repoName string,
 	build BuildMeta,
 	ts time.Time,
 ) (uint64, error) {
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	tx, err := db.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -90,7 +99,7 @@ func (s PGStore) CreateBuild(
 	// Create build
 	var newID uint64
 
-	err = s.pool.QueryRow(
+	err = db.pool.QueryRow(
 		ctx,
 		`INSERT INTO builds (
 			repo_id,
@@ -125,14 +134,14 @@ func (s PGStore) CreateBuild(
 	return newID, err
 }
 
-func (s PGStore) StartBuild(
+func (db DBStore) StartBuild(
 	ctx context.Context,
 	buildID uint64,
 	started time.Time,
 	pid int,
 	cacheID *uint64,
 ) error {
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := db.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -164,14 +173,14 @@ func (s PGStore) StartBuild(
 	return tx.Commit(ctx)
 }
 
-func (s PGStore) FinishBuild(
+func (db DBStore) FinishBuild(
 	ctx context.Context,
 	buildID uint64,
 	finished time.Time,
 	result BuildResult,
 	cacheBuildFiles bool,
 ) error {
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := db.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -237,10 +246,10 @@ type Build struct {
 
 var ErrNoBuild error = errors.New("build does not exist")
 
-func (s PGStore) GetBuild(ctx context.Context, buildID uint64) (*Build, error) {
+func (db DBStore) GetBuild(ctx context.Context, buildID uint64) (*Build, error) {
 	var b Build
 
-	err := s.pool.QueryRow(
+	err := db.pool.QueryRow(
 		ctx,
 		`SELECT
 			b.id,
@@ -285,8 +294,8 @@ func (s PGStore) GetBuild(ctx context.Context, buildID uint64) (*Build, error) {
 	return &b, err
 }
 
-func (s PGStore) ListBuilds(ctx context.Context) ([]Build, error) {
-	rows, err := s.pool.Query(
+func (db DBStore) ListBuilds(ctx context.Context) ([]Build, error) {
+	rows, err := db.pool.Query(
 		ctx,
 		`SELECT
 			b.id,
@@ -342,8 +351,8 @@ type PendingBuild struct {
 	CommitSHA string
 }
 
-func (s PGStore) GetPendingBuilds(ctx context.Context) ([]PendingBuild, error) {
-	rows, err := s.pool.Query(
+func (db DBStore) GetPendingBuilds(ctx context.Context) ([]PendingBuild, error) {
+	rows, err := db.pool.Query(
 		ctx,
 		`SELECT
 			b.id,
@@ -387,8 +396,8 @@ type Builder struct {
 	CacheID   *uint64
 }
 
-func (s PGStore) ListBuilders(ctx context.Context) ([]Builder, error) {
-	rows, err := s.pool.Query(
+func (db DBStore) ListBuilders(ctx context.Context) ([]Builder, error) {
+	rows, err := db.pool.Query(
 		ctx,
 		`SELECT
 			br.pid,
@@ -425,8 +434,8 @@ func (s PGStore) ListBuilders(ctx context.Context) ([]Builder, error) {
 		})
 }
 
-func (s PGStore) ListBuildDirsInUse(ctx context.Context) ([]uint64, error) {
-	rows, err := s.pool.Query(
+func (db DBStore) ListBuildDirsInUse(ctx context.Context) ([]uint64, error) {
+	rows, err := db.pool.Query(
 		ctx,
 		// Keep build dirs, cache dirs in use, and repo cache dir
 		`(SELECT build_id FROM builders)

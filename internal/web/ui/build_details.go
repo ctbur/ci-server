@@ -31,19 +31,19 @@ type BuildDetailsPage struct {
 	LogLines  []LogLine
 }
 
-func HandleBuildDetails(s store.PGStore, l store.LogStore, tmpl *template.Template) http.HandlerFunc {
+func HandleBuildDetails(db *store.DBStore, fs *store.FSStore, tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		log := wlog.FromContext(ctx)
 
-		build, ok := getBuildFromPath(s, w, r)
+		build, ok := getBuildFromPath(db, w, r)
 		if !ok {
 			return
 		}
 
 		var logLines []LogLine
 		if build.Started != nil {
-			logs, err := l.GetLogs(ctx, build.ID)
+			logs, err := fs.GetLogs(ctx, build.ID)
 			if err != nil {
 				http.Error(w, "Failed to fetch logs", http.StatusInternalServerError)
 				log.ErrorContext(ctx, "Failed to fetch logs", slog.Any("error", err))
@@ -88,12 +88,12 @@ func HandleBuildDetails(s store.PGStore, l store.LogStore, tmpl *template.Templa
 
 const LogPollPeriod = 500 * time.Millisecond
 
-func HandleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template) http.HandlerFunc {
+func HandleLogStream(db *store.DBStore, fs *store.FSStore, tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		log := wlog.FromContext(ctx)
 
-		build, ok := getBuildFromPath(s, w, r)
+		build, ok := getBuildFromPath(db, w, r)
 		if !ok {
 			return
 		}
@@ -125,7 +125,7 @@ func HandleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template)
 
 		// Wait for build to start
 		for {
-			build, err := s.GetBuild(ctx, build.ID)
+			build, err := db.GetBuild(ctx, build.ID)
 			if err != nil {
 				log.ErrorContext(ctx, "Failed to get build", slog.Any("error", err))
 				return
@@ -149,7 +149,7 @@ func HandleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template)
 		}
 
 		// Wait for build to end
-		logTailer := l.TailLogs(build.ID, fromLine)
+		logTailer := fs.TailLogs(build.ID, fromLine)
 		defer logTailer.Close()
 
 		logNr := fromLine
@@ -179,7 +179,7 @@ func HandleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template)
 				logNr++
 			}
 
-			build, err := s.GetBuild(ctx, build.ID)
+			build, err := db.GetBuild(ctx, build.ID)
 			if err != nil {
 				log.ErrorContext(ctx, "Failed to get build", slog.Any("error", err))
 				return
@@ -204,7 +204,7 @@ func HandleLogStream(s store.PGStore, l store.LogStore, tmpl *template.Template)
 	}
 }
 
-func getBuildFromPath(s store.PGStore, w http.ResponseWriter, r *http.Request) (*store.Build, bool) {
+func getBuildFromPath(db *store.DBStore, w http.ResponseWriter, r *http.Request) (*store.Build, bool) {
 	ctx := r.Context()
 	log := wlog.FromContext(ctx)
 
@@ -214,7 +214,7 @@ func getBuildFromPath(s store.PGStore, w http.ResponseWriter, r *http.Request) (
 		return nil, false
 	}
 
-	build, err := s.GetBuild(ctx, buildID)
+	build, err := db.GetBuild(ctx, buildID)
 	if err != nil {
 		http.Error(w, "Failed to fetch build", http.StatusInternalServerError)
 		log.ErrorContext(ctx, "Failed to fetch build", slog.Any("error", err))

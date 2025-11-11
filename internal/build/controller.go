@@ -14,7 +14,7 @@ import (
 )
 
 type BuilderController struct {
-	Dir *DataDir
+	FS *store.FSStore
 }
 
 type BuilderParams struct {
@@ -38,7 +38,7 @@ func (c *BuilderController) Start(
 ) (int, error) {
 
 	params := BuilderParams{
-		DataDir:      c.Dir.RootDir,
+		DataDir:      c.FS.RootDir,
 		BuildID:      build.ID,
 		CacheID:      build.CacheID,
 		RepoOwner:    repo.Owner,
@@ -81,7 +81,7 @@ func (c *BuilderController) Start(
 		Setpgid: true,
 	}
 
-	logWriter, err := c.Dir.OpenBuilderLogs(build.ID)
+	logWriter, err := c.FS.OpenBuilderLogs(build.ID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to open builder logs: %w", err)
 	}

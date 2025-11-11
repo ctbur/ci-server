@@ -26,12 +26,12 @@ type BuildCard struct {
 	Started   *time.Time
 }
 
-func HandleBuildList(s store.PGStore, tmpl *template.Template) http.HandlerFunc {
+func HandleBuildList(db *store.DBStore, tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		log := wlog.FromContext(ctx)
 
-		builds, err := s.ListBuilds(ctx)
+		builds, err := db.ListBuilds(ctx)
 		if err != nil {
 			http.Error(w, "Failed to list builds", http.StatusInternalServerError)
 			log.Error("Failed to list builds", slog.Any("error", err))

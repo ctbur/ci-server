@@ -16,7 +16,7 @@ type Processor struct {
 	Repos   config.RepoConfigs
 	Builds  buildStore
 	Builder builderController
-	Dir     processorDataDir
+	FS      processorFSStore
 	GitHub  commitStatusCreator
 }
 
@@ -33,7 +33,7 @@ type builderController interface {
 	IsRunning(pid int, buildID uint64) bool
 }
 
-type processorDataDir interface {
+type processorFSStore interface {
 	ReadAndCleanExitCode(buildID uint64) (int, error)
 	RetainBuildDirs(retainedIDs []uint64) ([]uint64, error)
 }
@@ -50,7 +50,7 @@ type commitStatusCreator interface {
 }
 
 func NewProcessor(
-	cfg *config.Config, dir *DataDir, s store.PGStore, gh *github.GitHubApp,
+	cfg *config.Config, fs *store.FSStore, db *store.DBStore, gh *github.GitHubApp,
 ) *Processor {
 	// Ensure that interface is nil when gh is nil
 	var pgh commitStatusCreator
@@ -61,9 +61,9 @@ func NewProcessor(
 	return &Processor{
 		HostURL: cfg.HostURL,
 		Repos:   cfg.Repos,
-		Builds:  s,
-		Dir:     dir,
-		Builder: &BuilderController{Dir: dir},
+		Builds:  db,
+		FS:      fs,
+		Builder: &BuilderController{FS: fs},
 		GitHub:  pgh,
 	}
 }
@@ -96,7 +96,7 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 		}
 
 		// Update build result
-		exitCode, err := p.Dir.ReadAndCleanExitCode(br.BuildID)
+		exitCode, err := p.FS.ReadAndCleanExitCode(br.BuildID)
 		var result store.BuildResult
 		if err != nil {
 			result = store.BuildResultError
@@ -248,7 +248,7 @@ func (p *Processor) process(log *slog.Logger, ctx context.Context) {
 		return
 	}
 
-	deletedIDs, err := p.Dir.RetainBuildDirs(buildDirsInUse)
+	deletedIDs, err := p.FS.RetainBuildDirs(buildDirsInUse)
 	if err != nil {
 		log.ErrorContext(ctx, "Failed to delete unused build dirs", slog.Any("error", err))
 	}

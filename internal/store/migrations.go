@@ -99,9 +99,9 @@ func ApplyMigrations(log *slog.Logger, ctx context.Context, pool *pgxpool.Pool, 
 	return nil
 }
 
-func InitRepositories(ctx context.Context, pgStore *PGStore, cfg *config.Config) error {
+func InitRepositories(ctx context.Context, db *DBStore, cfg *config.Config) error {
 	for _, repoCfg := range cfg.Repos {
-		err := pgStore.CreateRepoIfNotExists(
+		err := db.CreateRepoIfNotExists(
 			ctx,
 			Repo{
 				Owner: repoCfg.Owner,

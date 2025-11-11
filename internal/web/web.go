@@ -23,8 +23,8 @@ import (
 func Handler(
 	cfg *config.Config,
 	userAuth auth.UserAuth,
-	s store.PGStore,
-	l store.LogStore,
+	db *store.DBStore,
+	fs *store.FSStore,
 	tmpl *template.Template,
 	staticFileDir string,
 ) http.Handler {
@@ -33,13 +33,13 @@ func Handler(
 	staticFileServer := http.FileServer(http.Dir(staticFileDir))
 	mux.Handle("/static/", http.StripPrefix("/static/", staticFileServer))
 
-	mux.Handle("POST /webhook/manual", userAuth.Middleware(webhook.HandleManual(s, cfg)))
-	mux.Handle("POST /webhook/github", webhook.HandleGitHub(s, cfg))
+	mux.Handle("POST /webhook/manual", userAuth.Middleware(webhook.HandleManual(db, cfg)))
+	mux.Handle("POST /webhook/github", webhook.HandleGitHub(db, cfg))
 
 	uiMux := http.NewServeMux()
-	uiMux.Handle("GET /{$}", ui.HandleBuildList(s, tmpl))
-	uiMux.Handle("GET /builds/{build_id}", ui.HandleBuildDetails(s, l, tmpl))
-	uiMux.Handle("GET /builds/{build_id}/log-stream", ui.HandleLogStream(s, l, tmpl))
+	uiMux.Handle("GET /{$}", ui.HandleBuildList(db, tmpl))
+	uiMux.Handle("GET /builds/{build_id}", ui.HandleBuildDetails(db, fs, tmpl))
+	uiMux.Handle("GET /builds/{build_id}/log-stream", ui.HandleLogStream(db, fs, tmpl))
 	mux.Handle("/", userAuth.Middleware(uiMux))
 
 	return wlog.Middleware(mux)
