@@ -36,13 +36,13 @@ type FSStore struct {
 	RootDir string
 }
 
-func (s *FSStore) WriteExitCode(buildID uint64, exitCode int) error {
-	exitCodePath := path.Join(s.RootDir, "exit-code", strconv.FormatUint(buildID, 10))
+func (fs *FSStore) WriteExitCode(buildID uint64, exitCode int) error {
+	exitCodePath := path.Join(fs.RootDir, "exit-code", strconv.FormatUint(buildID, 10))
 	return os.WriteFile(exitCodePath, []byte(strconv.Itoa(exitCode)), 0o600)
 }
 
-func (s *FSStore) ReadAndCleanExitCode(buildID uint64) (int, error) {
-	exitCodeFile := path.Join(s.RootDir, "exit-code", strconv.FormatUint(buildID, 10))
+func (fs *FSStore) ReadAndCleanExitCode(buildID uint64) (int, error) {
+	exitCodeFile := path.Join(fs.RootDir, "exit-code", strconv.FormatUint(buildID, 10))
 	// sec: Path is from a trusted user
 	data, err := os.ReadFile(exitCodeFile) // #nosec G304
 	if err != nil {
@@ -65,13 +65,13 @@ func (s *FSStore) ReadAndCleanExitCode(buildID uint64) (int, error) {
 // checkoutDir. If the cacheID is given, files from the build dir with the same
 // ID are copied into the directory beforehand.
 // It returns the absolute build dir path, or the first error encountered.
-func (s *FSStore) CreateBuildDir(
+func (fs *FSStore) CreateBuildDir(
 	buildID uint64, cacheID *uint64, checkoutDir string,
 ) (string, error) {
-	buildDir := path.Join(s.RootDir, "build", strconv.FormatUint(buildID, 10))
+	buildDir := path.Join(fs.RootDir, "build", strconv.FormatUint(buildID, 10))
 
 	if cacheID != nil {
-		cacheDir := path.Join(s.RootDir, "build", strconv.FormatUint(*cacheID, 10))
+		cacheDir := path.Join(fs.RootDir, "build", strconv.FormatUint(*cacheID, 10))
 		// copyDirs will create the build dir
 		if err := copyDirs(cacheDir, buildDir); err != nil {
 			return "", fmt.Errorf(
@@ -113,8 +113,8 @@ func copyDirs(src, dst string) error {
 	return nil
 }
 
-func (s *FSStore) RetainBuildDirs(retainedIDs []uint64) ([]uint64, error) {
-	buildRootDir := path.Join(s.RootDir, "build")
+func (fs *FSStore) RetainBuildDirs(retainedIDs []uint64) ([]uint64, error) {
+	buildRootDir := path.Join(fs.RootDir, "build")
 	entries, err := os.ReadDir(buildRootDir)
 	if err != nil {
 		return nil, err
@@ -171,30 +171,30 @@ func removeAll(path string) error {
 	return os.RemoveAll(path)
 }
 
-func (s *FSStore) CreateRootDirs() error {
-	if err := os.MkdirAll(path.Join(s.RootDir, "build-logs"), 0o700); err != nil {
+func (fs *FSStore) CreateRootDirs() error {
+	if err := os.MkdirAll(path.Join(fs.RootDir, "build-logs"), 0o700); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(path.Join(s.RootDir, "builder-logs"), 0o700); err != nil {
+	if err := os.MkdirAll(path.Join(fs.RootDir, "builder-logs"), 0o700); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(path.Join(s.RootDir, "exit-code"), 0o700); err != nil {
+	if err := os.MkdirAll(path.Join(fs.RootDir, "exit-code"), 0o700); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(path.Join(s.RootDir, "build"), 0o700); err != nil {
+	if err := os.MkdirAll(path.Join(fs.RootDir, "build"), 0o700); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *FSStore) OpenBuildLogs(buildID uint64) (io.WriteCloser, error) {
-	logFilePath := path.Join(s.RootDir, "build-logs", fmt.Sprintf("%d.jsonl", buildID))
+func (fs *FSStore) OpenBuildLogs(buildID uint64) (io.WriteCloser, error) {
+	logFilePath := path.Join(fs.RootDir, "build-logs", fmt.Sprintf("%d.jsonl", buildID))
 	// sec: Path is from a trusted user
 	return os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) // #nosec G304
 }
 
-func (s *FSStore) OpenBuilderLogs(buildID uint64) (io.WriteCloser, error) {
-	logFilePath := path.Join(s.RootDir, "builder-logs", fmt.Sprintf("%d.txt", buildID))
+func (fs *FSStore) OpenBuilderLogs(buildID uint64) (io.WriteCloser, error) {
+	logFilePath := path.Join(fs.RootDir, "builder-logs", fmt.Sprintf("%d.txt", buildID))
 	// sec: Path is from a trusted user
 	return os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) // #nosec G304
 }

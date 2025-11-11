@@ -25,8 +25,8 @@ type LogEntry struct {
 	Text      string    `json:"text"`
 }
 
-func (s *FSStore) GetLogs(ctx context.Context, buildID uint64) ([]LogEntry, error) {
-	LogFilePath := path.Join(s.RootDir, "build-logs", fmt.Sprintf("%d.jsonl", buildID))
+func (fs *FSStore) GetLogs(ctx context.Context, buildID uint64) ([]LogEntry, error) {
+	LogFilePath := path.Join(fs.RootDir, "build-logs", fmt.Sprintf("%d.jsonl", buildID))
 
 	// sec: Path is from a trusted user
 	logFile, err := os.Open(LogFilePath) // #nosec G304
@@ -57,9 +57,9 @@ func (s *FSStore) GetLogs(ctx context.Context, buildID uint64) ([]LogEntry, erro
 	return logs, nil
 }
 
-func (s FSStore) TailLogs(buildID uint64, fromLine uint) *LogTailer {
+func (fs FSStore) TailLogs(buildID uint64, fromLine uint) *LogTailer {
 	return &LogTailer{
-		logFilePath: path.Join(s.RootDir, "build-logs", fmt.Sprintf("%d.jsonl", buildID)),
+		logFilePath: path.Join(fs.RootDir, "build-logs", fmt.Sprintf("%d.jsonl", buildID)),
 		fromLine:    fromLine,
 	}
 }
