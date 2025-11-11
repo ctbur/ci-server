@@ -15,11 +15,21 @@ func LoadRSAPrivateKey(reader io.Reader) (*rsa.PrivateKey, error) {
 	}
 
 	block, _ := pem.Decode(keyData)
-	if block == nil || block.Type != "PRIVATE KEY" {
+	if block == nil {
 		return nil, fmt.Errorf("failed to decode PEM block containing private key")
 	}
 
-	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	var key any
+	switch block.Type {
+	case "PRIVATE KEY":
+		// PKCS#8: Algorithm-agnostic wrapper (preferred modern format)
+		key, err = x509.ParsePKCS8PrivateKey(block.Bytes)
+	case "RSA PRIVATE KEY":
+		// PKCS#1: Legacy, RSA-specific format
+		key, err = x509.ParsePKCS1PrivateKey(block.Bytes)
+	default:
+		return nil, fmt.Errorf("unsupported private key type: %s", block.Type)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse private key: %w", err)
 	}
