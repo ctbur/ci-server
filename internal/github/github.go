@@ -14,7 +14,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ctbur/ci-server/v2/internal/web/wlog"
+	"github.com/ctbur/ci-server/v2/internal/ctxlog"
 )
 
 type GitHubApp struct {
@@ -155,7 +155,7 @@ func (a *GitHubApp) CreateCommitStatus(
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	log := wlog.FromContext(ctx)
+	log := ctxlog.FromContext(ctx)
 	log.DebugContext(ctx,
 		"CreateCommitStatus",
 		slog.String("client", "github"),

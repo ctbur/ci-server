@@ -13,13 +13,13 @@ import (
 	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/config"
+	"github.com/ctbur/ci-server/v2/internal/ctxlog"
 	"github.com/ctbur/ci-server/v2/internal/store"
-	"github.com/ctbur/ci-server/v2/internal/web/wlog"
 )
 
 func HandleGitHub(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		log := wlog.FromContext(r.Context())
+		log := ctxlog.FromContext(r.Context())
 		ctx := r.Context()
 
 		// Only process push events

@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/config"
+	"github.com/ctbur/ci-server/v2/internal/ctxlog"
 	"github.com/ctbur/ci-server/v2/internal/store"
 	"github.com/ctbur/ci-server/v2/internal/web/auth"
 	"github.com/ctbur/ci-server/v2/internal/web/ui"
 	"github.com/ctbur/ci-server/v2/internal/web/webhook"
-	"github.com/ctbur/ci-server/v2/internal/web/wlog"
 )
 
 func Handler(
@@ -42,7 +42,7 @@ func Handler(
 	uiMux.Handle("GET /builds/{build_id}/log-stream", ui.HandleLogStream(db, fs, tmpl))
 	mux.Handle("/", userAuth.Middleware(uiMux))
 
-	return wlog.Middleware(mux)
+	return ctxlog.Middleware(mux)
 }
 
 func RunServer(log *slog.Logger, handler http.Handler, port int) error {

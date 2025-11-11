@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ctbur/ci-server/v2/internal/ctxlog"
 	"github.com/ctbur/ci-server/v2/internal/store"
-	"github.com/ctbur/ci-server/v2/internal/web/wlog"
 )
 
 type BuildListPage struct {
@@ -29,7 +29,7 @@ type BuildCard struct {
 func HandleBuildList(db *store.DBStore, tmpl *template.Template) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		log := wlog.FromContext(ctx)
+		log := ctxlog.FromContext(ctx)
 
 		builds, err := db.ListBuilds(ctx)
 		if err != nil {
