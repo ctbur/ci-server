@@ -148,6 +148,8 @@ func (a *GitHubApp) CreateCommitStatus(
 		"target_url":  targetURL,
 		"context":     contextStr,
 	})
+	// Debug print payload with fmt.Printf
+	fmt.Printf("CreateCommitStatus payload: %s\n", string(payloadBytes))
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
