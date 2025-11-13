@@ -60,7 +60,7 @@ func (fs *FSStore) GetLogs(ctx context.Context, buildID uint64) ([]LogEntry, err
 func (fs FSStore) TailLogs(buildID uint64, fromLine uint) *LogTailer {
 	return &LogTailer{
 		logFilePath: path.Join(fs.RootDir, "build-logs", fmt.Sprintf("%d.jsonl", buildID)),
-		fromLine:    fromLine,
+		linesToSkip: fromLine,
 	}
 }
 
@@ -68,8 +68,7 @@ type LogTailer struct {
 	logFilePath string
 	logFile     *os.File
 	logReader   *bufio.Reader
-	fromLine    uint
-	currentLine uint
+	linesToSkip uint
 }
 
 func (t *LogTailer) Read() ([]LogEntry, error) {
@@ -96,9 +95,9 @@ func (t *LogTailer) Read() ([]LogEntry, error) {
 			return logEntries, err
 		}
 
-		// Skip lines before fromLine
-		t.currentLine++
-		if t.currentLine < t.fromLine {
+		// Skip desired number of lines
+		if t.linesToSkip > 0 {
+			t.linesToSkip--
 			continue
 		}
 
