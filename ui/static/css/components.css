@@ -127,6 +127,9 @@
     column-gap: 0.5rem;
     grid-template-columns: 3rem minmax(0, 1fr) auto;
 
+    /* TODO: Fix the CSS to make the log container take the remaining height
+    of the viewport minus other elements */
+    min-height: 75vh;
     max-height: 75vh;
     overflow-y: auto;
 }
