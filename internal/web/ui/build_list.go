@@ -52,7 +52,6 @@ func HandleBuildList(db *store.DBStore, tmpl *template.Template) http.HandlerFun
 			log.Error("Failed to count builds", slog.Any("error", err))
 			return
 		}
-		totalBuilds *= 100
 
 		var nextPage *uint
 		if uint((page+1)*buildListPageSize) < uint(totalBuilds) {
