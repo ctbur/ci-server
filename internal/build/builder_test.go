@@ -316,6 +316,17 @@ func TestBuilder(t *testing.T) {
 			shouldDeploy: false,
 		},
 		{
+			desc:     "Build fails",
+			buildID:  101,
+			cacheID:  &cacheID,
+			buildCmd: []string{"make", "lint", "test"},
+			cmdResults: []MockCmdResult{
+				{exitCode: 5, err: nil},
+			},
+			wantExitCode: 5,
+			shouldDeploy: false,
+		},
+		{
 			desc:      "Build and deploy",
 			buildID:   101,
 			cacheID:   &cacheID,
