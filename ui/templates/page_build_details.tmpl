@@ -27,7 +27,7 @@
                 <div
                     id="sse-logs"
                     hx-ext="sse"
-                    sse-connect="/builds/{{ .ID }}/log-stream?fromLine={{ len .LogLines }}"
+                    sse-connect="/hx/builds/{{ .ID }}/log-stream?fromLine={{ len .LogLines }}"
                     sse-swap="log-line"
                     hx-swap="beforeend"
                     hx-target="#log-container"

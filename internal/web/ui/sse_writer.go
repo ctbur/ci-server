@@ -30,7 +30,7 @@ func (w *SSEWriter) sendEvent(id, event, data string) error {
 	fmt.Fprintf(w.w, "event: %s\n", event)
 
 	data = strings.TrimSpace(data)
-	for _, line := range strings.Split(data, "\n") {
+	for line := range strings.SplitSeq(data, "\n") {
 		fmt.Fprintf(w.w, "data: %s\n", line)
 	}
 	// Two newlines to separate events

@@ -24,13 +24,13 @@ func TestBuildStore(t *testing.T) {
 			Owner: "owner",
 			Name:  "repo1",
 		})
-		assert.NoError(t, err, "Failed to create owner/repo1")
+		assert.NoError(t, err, "Failed to create owner/repo1").Fatal()
 
 		err = s.CreateRepoIfNotExists(ctx, Repo{
 			Owner: "owner",
 			Name:  "repo2",
 		})
-		assert.NoError(t, err, "Failed to create owner/repo2")
+		assert.NoError(t, err, "Failed to create owner/repo2").Fatal()
 
 		err = s.CreateRepoIfNotExists(ctx, Repo{
 			Owner: "owner",
@@ -40,8 +40,8 @@ func TestBuildStore(t *testing.T) {
 
 		// There should be exactly 2 repositories now
 		numRepos, err := s.CountRepos(ctx)
-		assert.NoError(t, err, "Failed to count repositories")
-		assert.Equal(t, numRepos, 2, "There should be exactly 2 repositories")
+		assert.NoError(t, err, "Failed to count repositories").Fatal()
+		assert.Equal(t, numRepos, 2, "There should be exactly 2 repositories").Fatal()
 	})
 
 	t.Run("Create and retrieve builds", func(t *testing.T) {
@@ -53,8 +53,8 @@ func TestBuildStore(t *testing.T) {
 			Message:   "message_r1b1",
 		}
 		r1b1ID, err := s.CreateBuild(ctx, "owner", "repo1", r1b1, time.UnixMilli(11))
-		assert.NoError(t, err, "Failed to create build")
-		assert.Equal(t, r1b1ID, 1, "Incorrect ID for build")
+		assert.NoError(t, err, "Failed to create build").Fatal()
+		assert.Equal(t, r1b1ID, 1, "Incorrect ID for build").Fatal()
 
 		r1b2 := BuildMeta{
 			Link:      "https://github.com/owner/repos1/b2",
@@ -63,8 +63,8 @@ func TestBuildStore(t *testing.T) {
 			Message:   "message_r1b2",
 		}
 		r1b2ID, err := s.CreateBuild(ctx, "owner", "repo1", r1b2, time.UnixMilli(12))
-		assert.NoError(t, err, "Failed to create build")
-		assert.Equal(t, r1b2ID, 2, "Incorrect ID for build")
+		assert.NoError(t, err, "Failed to create build").Fatal()
+		assert.Equal(t, r1b2ID, 2, "Incorrect ID for build").Fatal()
 
 		r2b1 := BuildMeta{
 			Link:      "https://github.com/owner/repos2/b1",
@@ -73,8 +73,8 @@ func TestBuildStore(t *testing.T) {
 			Message:   "message_r2b1",
 		}
 		r2b1ID, err := s.CreateBuild(ctx, "owner", "repo2", r2b1, time.UnixMilli(21))
-		assert.NoError(t, err, "Failed to create build")
-		assert.Equal(t, r2b1ID, 3, "Incorrect ID for build")
+		assert.NoError(t, err, "Failed to create build").Fatal()
+		assert.Equal(t, r2b1ID, 3, "Incorrect ID for build").Fatal()
 
 		r2b2 := BuildMeta{
 			Link:      "https://github.com/owner/repos2/b2",
@@ -83,12 +83,12 @@ func TestBuildStore(t *testing.T) {
 			Message:   "message_r2b2",
 		}
 		r2b2ID, err := s.CreateBuild(ctx, "owner", "repo2", r2b2, time.UnixMilli(22))
-		assert.NoError(t, err, "Failed to create build")
-		assert.Equal(t, r2b2ID, 4, "Incorrect ID for build")
+		assert.NoError(t, err, "Failed to create build").Fatal()
+		assert.Equal(t, r2b2ID, 4, "Incorrect ID for build").Fatal()
 
 		// Test getting single build
 		r2b2got, err := s.GetBuild(ctx, r2b2ID)
-		assert.NoError(t, err, "Failed to get build")
+		assert.NoError(t, err, "Failed to get build").Fatal()
 
 		r2b2want := Build{
 			ID:     4,
@@ -109,21 +109,32 @@ func TestBuildStore(t *testing.T) {
 				Name:  "repo2",
 			},
 		}
-		assert.Equal(t, *r2b2got, r2b2want, "Unexpected build retrieved")
+		assert.Equal(t, *r2b2got, r2b2want, "Unexpected build retrieved").Fatal()
 
 		_, err = s.GetBuild(ctx, 100)
-		assert.ErrorIs(t, err, ErrNoBuild, "Incorrect error for non-existent build")
+		assert.ErrorIs(t, err, ErrNoBuild, "Incorrect error for non-existent build").Fatal()
 
-		// Test listing builds
-		builds, err := s.ListBuilds(ctx)
-		assert.NoError(t, err, "Failed to list builds")
+		// Test listing latest builds
+		builds, err := s.ListBuilds(ctx, nil, 4)
+		assert.NoError(t, err, "Failed to list builds").Fatal()
 		assert.DeepEqual(t,
 			[]uint64{builds[0].ID, builds[1].ID, builds[2].ID, builds[3].ID},
 			// Created desc
 			[]uint64{4, 3, 2, 1},
 			"Incorrect build IDs",
-		)
+		).Fatal()
 		assert.Equal(t, builds[0], r2b2want, "Unexpected build retrieved")
+
+		// Test listing builds with beforeID and limit
+		beforeID := uint64(3)
+		builds, err = s.ListBuilds(ctx, &beforeID, 3)
+		assert.NoError(t, err, "Failed to list builds").Fatal()
+		assert.DeepEqual(t,
+			[]uint64{builds[0].ID, builds[1].ID},
+			// Created desc
+			[]uint64{3, 2},
+			"Incorrect build IDs",
+		).Fatal()
 	})
 
 	t.Run("Get pending and running builds", func(t *testing.T) {

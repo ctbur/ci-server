@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/ctxlog"
@@ -31,33 +32,17 @@ func HandleBuildList(db *store.DBStore, tmpl *template.Template) http.HandlerFun
 		ctx := r.Context()
 		log := ctxlog.FromContext(ctx)
 
-		builds, err := db.ListBuilds(ctx)
-		if err != nil {
-			http.Error(w, "Failed to list builds", http.StatusInternalServerError)
-			log.Error("Failed to list builds", slog.Any("error", err))
+		buildCards, ok := getBuildCards(db, w, r)
+		if !ok {
 			return
 		}
 
-		buildCards := make([]BuildCard, len(builds))
-		for i, b := range builds {
-			card := BuildCard{
-				ID:        b.ID,
-				Status:    buildStatus(b),
-				Message:   shortCommitMessage(b.Message),
-				Author:    b.Author,
-				Ref:       b.Ref,
-				CommitSHA: b.CommitSHA[:min(7, len(b.CommitSHA))],
-				Duration:  durationSinceBuildStart(b),
-				Started:   b.Started,
-			}
-			buildCards[i] = card
-		}
 		params := &BuildListPage{
 			BuildCards: buildCards,
 		}
 
 		var b bytes.Buffer
-		err = tmpl.ExecuteTemplate(&b, "page_build_list", params)
+		err := tmpl.ExecuteTemplate(&b, "page_build_list", params)
 		if err != nil {
 			http.Error(w, "Failed to render template", http.StatusInternalServerError)
 			log.Error("Failed to render template", slog.Any("error", err))
@@ -67,4 +52,65 @@ func HandleBuildList(db *store.DBStore, tmpl *template.Template) http.HandlerFun
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = b.WriteTo(w)
 	}
+}
+
+func HandleBuildListFragment(db *store.DBStore, tmpl *template.Template) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		log := ctxlog.FromContext(ctx)
+
+		buildCards, ok := getBuildCards(db, w, r)
+		if !ok {
+			return
+		}
+
+		var b bytes.Buffer
+		err := tmpl.ExecuteTemplate(&b, "comp_build_list", buildCards)
+		if err != nil {
+			http.Error(w, "Failed to render template", http.StatusInternalServerError)
+			log.Error("Failed to render template", slog.Any("error", err))
+			return
+		}
+	}
+}
+
+var buildListLimit = uint64(12)
+
+func getBuildCards(db *store.DBStore, w http.ResponseWriter, r *http.Request) ([]BuildCard, bool) {
+	ctx := r.Context()
+	log := ctxlog.FromContext(ctx)
+
+	var beforeID *uint64
+	if beforeIDStr := r.URL.Query().Get("beforeID"); beforeIDStr != "" {
+		id, err := strconv.ParseUint(beforeIDStr, 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid beforeID parameter", http.StatusBadRequest)
+			return nil, false
+		}
+		beforeID = &id
+	}
+
+	builds, err := db.ListBuilds(ctx, beforeID, buildListLimit)
+	if err != nil {
+		http.Error(w, "Failed to list builds", http.StatusInternalServerError)
+		log.Error("Failed to list builds", slog.Any("error", err))
+		return nil, false
+	}
+
+	buildCards := make([]BuildCard, len(builds))
+	for i, b := range builds {
+		card := BuildCard{
+			ID:        b.ID,
+			Status:    buildStatus(b),
+			Message:   shortCommitMessage(b.Message),
+			Author:    b.Author,
+			Ref:       b.Ref,
+			CommitSHA: b.CommitSHA[:min(7, len(b.CommitSHA))],
+			Duration:  durationSinceBuildStart(b),
+			Started:   b.Started,
+		}
+		buildCards[i] = card
+	}
+
+	return buildCards, true
 }

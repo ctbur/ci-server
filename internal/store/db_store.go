@@ -294,7 +294,9 @@ func (db DBStore) GetBuild(ctx context.Context, buildID uint64) (*Build, error) 
 	return &b, err
 }
 
-func (db DBStore) ListBuilds(ctx context.Context) ([]Build, error) {
+func (db DBStore) ListBuilds(
+	ctx context.Context, beforeID *uint64, limit uint64,
+) ([]Build, error) {
 	rows, err := db.pool.Query(
 		ctx,
 		`SELECT
@@ -314,7 +316,13 @@ func (db DBStore) ListBuilds(ctx context.Context) ([]Build, error) {
 			r.name
 		FROM builds AS b
 		INNER JOIN repos AS r ON b.repo_id = r.id
-		ORDER BY b.created DESC`,
+		WHERE CASE
+			WHEN $1::BIGINT IS NOT NULL THEN b.id < $1::BIGINT
+			ELSE TRUE
+		END
+		ORDER BY b.id DESC
+		LIMIT $2`,
+		beforeID, limit,
 	)
 	if err != nil {
 		return nil, err
