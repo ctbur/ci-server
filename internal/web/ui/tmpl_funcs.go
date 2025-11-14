@@ -11,6 +11,7 @@ var TemplateFuncMap = template.FuncMap{
 	"add":            Add,
 	"formatDuration": FormatDuration,
 	"formatTime":     FormatTime,
+	"icon":           IncludeIcon,
 }
 
 func Add(a, b int) int {

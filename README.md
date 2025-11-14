@@ -43,3 +43,5 @@ NoNewPrivileges=true
 [Install]
 WantedBy=multi-user.target
 ```
+
+Using [Fontawesome](https://fontawesome.com/) icons in internal/web/ui/fontawesome.go

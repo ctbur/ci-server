@@ -7,7 +7,12 @@
     --black: #333333;
     --deep-black: #222222;
     --primary: #196ec2;
-    --alert: #df2020;
+    --alert: #dc3545;
+
+    --success: #60c477;
+    --warning: #ffdd66;
+    --info: #5bc5d9;
+    --danger: #e87380;
 
     --text-color: var(--black);
     --weak-text-color: var(--dark-gray);
