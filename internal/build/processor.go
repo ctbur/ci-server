@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/config"
+	"github.com/ctbur/ci-server/v2/internal/ctxlog"
 	"github.com/ctbur/ci-server/v2/internal/github"
 	"github.com/ctbur/ci-server/v2/internal/store"
 )
@@ -70,19 +71,21 @@ func NewProcessor(
 
 const dispatchPollPeriod = 500 * time.Millisecond
 
-func (p *Processor) Run(log *slog.Logger, ctx context.Context) error {
+func (p *Processor) Run(ctx context.Context) {
 	for {
 		select {
 		case <-time.After(dispatchPollPeriod):
-			p.process(log, ctx)
+			p.process(ctx)
 
 		case <-ctx.Done():
-			return nil
+			return
 		}
 	}
 }
 
-func (p *Processor) process(log *slog.Logger, ctx context.Context) {
+func (p *Processor) process(ctx context.Context) {
+	log := ctxlog.FromContext(ctx)
+
 	// Handle finished builds
 	runningBuilders, err := p.Builds.ListBuilders(ctx)
 	if err != nil {
