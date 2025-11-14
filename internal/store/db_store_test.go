@@ -115,7 +115,7 @@ func TestBuildStore(t *testing.T) {
 		assert.ErrorIs(t, err, ErrNoBuild, "Incorrect error for non-existent build").Fatal()
 
 		// Test listing latest builds
-		builds, err := s.ListBuilds(ctx, nil, 4)
+		builds, err := s.ListBuilds(ctx, 0, 4)
 		assert.NoError(t, err, "Failed to list builds").Fatal()
 		assert.DeepEqual(t,
 			[]uint64{builds[0].ID, builds[1].ID, builds[2].ID, builds[3].ID},
@@ -126,15 +126,19 @@ func TestBuildStore(t *testing.T) {
 		assert.Equal(t, builds[0], r2b2want, "Unexpected build retrieved")
 
 		// Test listing builds with beforeID and limit
-		beforeID := uint64(3)
-		builds, err = s.ListBuilds(ctx, &beforeID, 3)
+		builds, err = s.ListBuilds(ctx, 1, 2)
 		assert.NoError(t, err, "Failed to list builds").Fatal()
 		assert.DeepEqual(t,
 			[]uint64{builds[0].ID, builds[1].ID},
 			// Created desc
-			[]uint64{3, 2},
+			[]uint64{2, 1},
 			"Incorrect build IDs",
 		).Fatal()
+
+		// Count builds
+		count, err := s.CountBuilds(ctx)
+		assert.NoError(t, err, "Failed to count builds").Fatal()
+		assert.Equal(t, count, uint64(4), "Incorrect build count").Fatal()
 	})
 
 	t.Run("Get pending and running builds", func(t *testing.T) {

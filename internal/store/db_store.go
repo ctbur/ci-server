@@ -295,7 +295,7 @@ func (db DBStore) GetBuild(ctx context.Context, buildID uint64) (*Build, error) 
 }
 
 func (db DBStore) ListBuilds(
-	ctx context.Context, beforeID *uint64, limit uint64,
+	ctx context.Context, page uint, pageSize uint,
 ) ([]Build, error) {
 	rows, err := db.pool.Query(
 		ctx,
@@ -316,13 +316,10 @@ func (db DBStore) ListBuilds(
 			r.name
 		FROM builds AS b
 		INNER JOIN repos AS r ON b.repo_id = r.id
-		WHERE CASE
-			WHEN $1::BIGINT IS NOT NULL THEN b.id < $1::BIGINT
-			ELSE TRUE
-		END
 		ORDER BY b.id DESC
-		LIMIT $2`,
-		beforeID, limit,
+		LIMIT $1
+		OFFSET $2`,
+		pageSize, page*pageSize,
 	)
 	if err != nil {
 		return nil, err
@@ -349,6 +346,12 @@ func (db DBStore) ListBuilds(
 		)
 		return b, err
 	})
+}
+
+func (db DBStore) CountBuilds(ctx context.Context) (uint64, error) {
+	var count uint64
+	err := db.pool.QueryRow(ctx, `SELECT COUNT(*) FROM builds`).Scan(&count)
+	return count, err
 }
 
 type PendingBuild struct {

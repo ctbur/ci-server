@@ -13,7 +13,10 @@ import (
 )
 
 type BuildListPage struct {
-	BuildCards []BuildCard
+	BuildCards   []BuildCard
+	PreviousPage *uint
+	CurrentPage  uint
+	NextPage     *uint
 }
 
 type BuildCard struct {
@@ -32,17 +35,40 @@ func HandleBuildList(db *store.DBStore, tmpl *template.Template) http.HandlerFun
 		ctx := r.Context()
 		log := ctxlog.FromContext(ctx)
 
-		buildCards, ok := getBuildCards(db, w, r)
+		page, buildCards, ok := getBuildCards(db, w, r)
 		if !ok {
 			return
 		}
 
+		var previousPage *uint
+		if page > 0 {
+			p := page - 1
+			previousPage = &p
+		}
+
+		totalBuilds, err := db.CountBuilds(ctx)
+		if err != nil {
+			http.Error(w, "Failed to count builds", http.StatusInternalServerError)
+			log.Error("Failed to count builds", slog.Any("error", err))
+			return
+		}
+		totalBuilds *= 100
+
+		var nextPage *uint
+		if uint((page+1)*buildListPageSize) < uint(totalBuilds) {
+			n := page + 1
+			nextPage = &n
+		}
+
 		params := &BuildListPage{
-			BuildCards: buildCards,
+			BuildCards:   buildCards,
+			PreviousPage: previousPage,
+			CurrentPage:  page,
+			NextPage:     nextPage,
 		}
 
 		var b bytes.Buffer
-		err := tmpl.ExecuteTemplate(&b, "page_build_list", params)
+		err = tmpl.ExecuteTemplate(&b, "page_build_list", params)
 		if err != nil {
 			http.Error(w, "Failed to render template", http.StatusInternalServerError)
 			log.Error("Failed to render template", slog.Any("error", err))
@@ -59,7 +85,7 @@ func HandleBuildListFragment(db *store.DBStore, tmpl *template.Template) http.Ha
 		ctx := r.Context()
 		log := ctxlog.FromContext(ctx)
 
-		buildCards, ok := getBuildCards(db, w, r)
+		_, buildCards, ok := getBuildCards(db, w, r)
 		if !ok {
 			return
 		}
@@ -71,30 +97,35 @@ func HandleBuildListFragment(db *store.DBStore, tmpl *template.Template) http.Ha
 			log.Error("Failed to render template", slog.Any("error", err))
 			return
 		}
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = b.WriteTo(w)
 	}
 }
 
-var buildListLimit = uint64(12)
+var buildListPageSize = uint(12)
 
-func getBuildCards(db *store.DBStore, w http.ResponseWriter, r *http.Request) ([]BuildCard, bool) {
+func getBuildCards(
+	db *store.DBStore, w http.ResponseWriter, r *http.Request,
+) (uint, []BuildCard, bool) {
 	ctx := r.Context()
 	log := ctxlog.FromContext(ctx)
 
-	var beforeID *uint64
-	if beforeIDStr := r.URL.Query().Get("beforeID"); beforeIDStr != "" {
-		id, err := strconv.ParseUint(beforeIDStr, 10, 64)
+	page := uint(0)
+	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+		id, err := strconv.ParseUint(pageStr, 10, 64)
 		if err != nil {
 			http.Error(w, "Invalid beforeID parameter", http.StatusBadRequest)
-			return nil, false
+			return 0, nil, false
 		}
-		beforeID = &id
+		page = uint(id)
 	}
 
-	builds, err := db.ListBuilds(ctx, beforeID, buildListLimit)
+	builds, err := db.ListBuilds(ctx, page, buildListPageSize)
 	if err != nil {
 		http.Error(w, "Failed to list builds", http.StatusInternalServerError)
 		log.Error("Failed to list builds", slog.Any("error", err))
-		return nil, false
+		return 0, nil, false
 	}
 
 	buildCards := make([]BuildCard, len(builds))
@@ -112,5 +143,5 @@ func getBuildCards(db *store.DBStore, w http.ResponseWriter, r *http.Request) ([
 		buildCards[i] = card
 	}
 
-	return buildCards, true
+	return page, buildCards, true
 }
