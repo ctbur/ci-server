@@ -108,7 +108,7 @@ func (br *Builder) runBuild(log *slog.Logger, p BuilderParams) (int, error) {
 	// Don't run deploy if there is no command
 	if len(p.DeployCmd) == 0 {
 		slog.Info("No deploy command provided")
-		return 0, nil
+		return exitCode, nil
 	}
 	// Don't run deploy if build failed
 	if exitCode != 0 {
