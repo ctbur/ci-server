@@ -13,10 +13,11 @@ const (
 	fontAwesomeClock       = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc. --><path fill="currentColor" d="M464 256a208 208 0 1 1 -416 0 208 208 0 1 1 416 0zM0 256a256 256 0 1 0 512 0 256 256 0 1 0 -512 0zM232 120l0 136c0 8 4 15.5 10.7 20l96 64c11 7.4 25.9 4.4 33.3-6.7s4.4-25.9-6.7-33.3L280 243.2 280 120c0-13.3-10.7-24-24-24s-24 10.7-24 24z"/></svg>`
 )
 
+// sec: template.HTML is safe here as the content is hardcoded and trusted
 var icons = map[string]template.HTML{
-	"check-circle": template.HTML(fontAwesomeCheckCircle),
-	"times-circle": template.HTML(fontAwesomeTimesCircle),
-	"clock":        template.HTML(fontAwesomeClock),
+	"check-circle": template.HTML(fontAwesomeCheckCircle), // #nosec G203
+	"times-circle": template.HTML(fontAwesomeTimesCircle), // #nosec G203
+	"clock":        template.HTML(fontAwesomeClock),       // #nosec G203
 }
 
 func IncludeIcon(name string) (template.HTML, error) {
