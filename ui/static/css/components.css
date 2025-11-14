@@ -131,6 +131,7 @@
     of the viewport minus other elements */
     min-height: 75vh;
     max-height: 75vh;
+    align-content: start;
     overflow-y: auto;
 }
 
