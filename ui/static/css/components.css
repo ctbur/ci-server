@@ -125,9 +125,9 @@
 
     display: grid;
     column-gap: 0.5rem;
-    grid-template-columns: 3rem 1fr auto;
+    grid-template-columns: 3rem minmax(0, 1fr) auto;
 
-    max-height: 80vh;
+    max-height: 75vh;
     overflow-y: auto;
 }
 
