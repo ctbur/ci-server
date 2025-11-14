@@ -5,11 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
-	"log/slog"
 	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/config"
@@ -46,7 +42,9 @@ func Handler(
 	return ctxlog.Middleware(mux)
 }
 
-func RunServer(log *slog.Logger, handler http.Handler, port int) error {
+func RunServer(ctx context.Context, handler http.Handler, port int) error {
+	log := ctxlog.FromContext(ctx)
+
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
 		Handler: handler,
@@ -66,13 +64,10 @@ func RunServer(log *slog.Logger, handler http.Handler, port int) error {
 		serverErrChan <- nil
 	}()
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	// Wait until either a signal is received or the server has an error
+	// Wait until either the context is canceled or the server has an error
 	select {
-	case <-sigChan:
-		log.Info("Received signal, shutting down gracefully...")
+	case <-ctx.Done():
+		log.Info("Shutting down server...")
 	case err := <-serverErrChan:
 		if err != nil {
 			return fmt.Errorf("server terminated unexpectedly: %w", err)
@@ -80,7 +75,7 @@ func RunServer(log *slog.Logger, handler http.Handler, port int) error {
 		return nil
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {

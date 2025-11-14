@@ -8,7 +8,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"path"
+	"syscall"
 
 	"github.com/ctbur/ci-server/v2/internal/build"
 	"github.com/ctbur/ci-server/v2/internal/config"
@@ -66,7 +68,18 @@ func runServer() error {
 		slog.Info("Starting in production mode")
 	}
 
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Handle SIGINT and SIGTERM.
+	go func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+		sig := <-sigChan
+		slog.Info("Received signal, shutting down...", slog.String("signal", sig.String()))
+		cancel()
+	}()
+
 	pool, err := pgxpool.New(ctx, postgresURL)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %v", err)
@@ -139,11 +152,11 @@ func runServer() error {
 	}
 
 	processor := build.NewProcessor(cfg, &fs, &db, githubApp)
-	go processor.Run(slog.Default(), ctx)
+	go processor.Run(ctx)
 
 	staticFileDir := path.Join(*libDir, "ui/static/")
 	handler := web.Handler(cfg, userAuth, &db, &fs, tmpl, staticFileDir)
-	err = web.RunServer(slog.Default(), handler, 8000)
+	err = web.RunServer(ctx, handler, 8000)
 	if err != nil {
 		return fmt.Errorf("error during web server execution: %w", err)
 	}
