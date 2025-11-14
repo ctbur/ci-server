@@ -103,7 +103,7 @@ func HandleBuildListFragment(db *store.DBStore, tmpl *template.Template) http.Ha
 	}
 }
 
-var buildListPageSize = uint(12)
+var buildListPageSize = uint(8)
 
 func getBuildCards(
 	db *store.DBStore, w http.ResponseWriter, r *http.Request,
