@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/ctxlog"
@@ -134,7 +135,7 @@ func getBuildCards(
 			Status:    buildStatus(b),
 			Message:   shortCommitMessage(b.Message),
 			Author:    b.Author,
-			Ref:       b.Ref,
+			Ref:       strings.TrimPrefix(b.Ref, "refs/heads/"),
 			CommitSHA: b.CommitSHA[:min(7, len(b.CommitSHA))],
 			Duration:  durationSinceBuildStart(b),
 			Started:   b.Started,
