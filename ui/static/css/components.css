@@ -20,11 +20,11 @@
     background-color: var(--card-background-color);
 
     display: grid;
-    grid-template-columns: 12rem 1fr 12rem 10rem;
+    grid-template-columns: 4rem 8rem 1fr 10rem 10rem;
     grid-template-rows: 1fr 1fr;
     grid-template-areas:
-        "status message ref        duration"
-        "author message commit_sha created ";
+        "status author message ref        duration"
+        "status author message commit_sha created ";
 }
 
 .build-details-item {
@@ -37,6 +37,10 @@
 
 .status {
     grid-area: status;
+
+    font-size: 2rem;
+    display: flex;
+    align-items: center;
 }
 
 .ref {
@@ -55,6 +59,9 @@
 
 .author {
     grid-area: author;
+
+    display: flex;
+    align-items: center;
 }
 
 .commit-sha {
@@ -142,4 +149,15 @@
     justify-content: flex-end;
 
     user-select: none;
+}
+
+.text-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    width: 1em;
+    height: 1em;
+
+    vertical-align: -0.125em;
 }

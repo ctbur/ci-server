@@ -1,0 +1,25 @@
+{{ define "comp_build_status_icon" }}
+{{ if eq . "success" }}
+    <span class="text-icon" style="color: var(--success);">
+        {{ icon "check-circle" }}
+    </span>
+{{ else if or (eq . "pending") (eq . "running") }}
+    <span class="text-icon" style="color: var(--warning);">
+        {{ icon "clock" }}
+    </span>
+{{ else }}
+    <span class="text-icon" style="color: var(--danger);">
+        {{ icon "times-circle" }}
+    </span>
+{{ end }}
+{{ end }}
+
+{{- define "comp_build_status_color" -}}
+{{- if eq . "success" -}}
+    color: var(--success);
+{{- else if or (eq . "pending") (eq . "running") -}}
+    color: var(--warning);
+{{- else -}}
+    color: var(--danger);
+{{- end -}}
+{{- end -}}

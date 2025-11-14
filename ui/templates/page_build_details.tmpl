@@ -20,7 +20,7 @@
                 <div class="build-title-container">
                     <span class="build-title-name">{{ .RepoOwner }}/{{ .RepoName }} #{{ .Number }}</span>
                     <span class="build-title-message">{{ .Message }}</span>
-                    <span class="build-title-status">{{ .Status }}</span>
+                    <span class="build-title-status" style="{{ template "comp_build_status_color" .Status }}">{{ .Status }}</span>
                 </div>
             </section>
             <section id="build-logs">
