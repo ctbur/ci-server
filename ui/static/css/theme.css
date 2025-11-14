@@ -90,5 +90,8 @@ html {
         --toggle-background-off: var(--dark-gray);
 
         --expand-image: url("../images/expand-white.svg");
+
+        --logs-background-color: var(--deep-black);
+        --logs-text-color: var(--light-gray);
     }
 }
