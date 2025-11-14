@@ -1,0 +1,17 @@
+{{ define "comp_build_list" }}
+{{- range . }}
+<a href="/builds/{{ .ID }}" class="build-card-link">
+    <li class="build-card">
+        <div class="build-details-item status">{{ .Status }}</div>
+        <div class="build-details-item author">{{ .Author }}</div>
+        <div class="build-details-item message">{{ .Message }}</div>
+        <div class="build-details-item ref">{{ .Ref }}</div>
+        <div class="build-details-item duration">
+            {{ if .Duration }}{{ formatDuration .Duration }}{{ else }}N/A{{ end }}
+        </div>
+        <div class="build-details-item commit-sha">{{ .CommitSHA }}</div>
+        <div class="build-details-item created">{{ formatTime .Started "Jan 2, 15:04" }}</div>
+    </li>
+</a>
+{{- end }}
+{{ end }}

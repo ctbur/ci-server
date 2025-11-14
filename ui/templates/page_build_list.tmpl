@@ -3,6 +3,9 @@
 <html lang="en">
     <head>
         {{ template "comp_head" }}
+
+        <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous"></script>
+
         <title>CI</title>
     </head>
 
@@ -13,25 +16,39 @@
 
         <main class="container">
             <section id="builds">
-                <ul class="build-list">
-                    {{- range .BuildCards }}
-                    <a href="/builds/{{ .ID }}" class="build-card-link">
-                        <li class="build-card">
-                            <div class="build-details-item status">{{ .Status }}</div>
-                            <div class="build-details-item author">{{ .Author }}</div>
-                            <div class="build-details-item message">{{ .Message }}</div>
-                            <div class="build-details-item ref">{{ .Ref }}</div>
-                            <div class="build-details-item duration">
-                                {{ if .Duration }}{{ formatDuration .Duration }}{{ else }}N/A{{ end }}
-                            </div>
-                            <div class="build-details-item commit-sha">{{ .CommitSHA }}</div>
-                            <div class="build-details-item created">{{ formatTime .Started "Jan 2, 15:04" }}</div>
-                        </li>
-                    </a>
-                    {{- end }}
+                <ul class="build-list"
+                    hx-get="/hx/builds?page={{ .CurrentPage }}"
+                    hx-trigger="every 1s [document.visibilityState === 'visible'], visibilitychange[document.visibilityState === 'visible'] from:document"
+                    hx-swap="innerHTML"
+                >
+                    {{ template "comp_build_list" .BuildCards }}
                 </ul>
             </section>
         </main>
+
+        <nav style="text-align: center; margin-top: 2rem;">
+            {{ if ne .PreviousPage nil }}
+                <a class="button"
+                    href="?page={{ .PreviousPage }}"
+                    aria-label="Previous Page"
+                >
+                    &laquo; Previous
+                </a>
+            {{ end }}
+
+            <span style="margin: 0 1rem; font-weight: bold;">
+                Page {{ .CurrentPage }}
+            </span>
+
+            {{ if ne .NextPage nil }}
+                <a class="button"
+                        href="?page={{ .NextPage }}"
+                    aria-label="Next Page"
+                >
+                Next &raquo;
+                </a>
+            {{ end }}
+        </nav>
     </body>
 </html>
 {{ end }}
