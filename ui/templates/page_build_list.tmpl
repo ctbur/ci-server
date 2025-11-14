@@ -18,7 +18,11 @@
             <section id="builds">
                 <ul class="build-list"
                     hx-get="/hx/builds?page={{ .CurrentPage }}"
-                    hx-trigger="every 1s [document.visibilityState === 'visible'], visibilitychange[document.visibilityState === 'visible'] from:document"
+                    hx-trigger="
+                        load [document.visibilityState === 'visible'],
+                        htmx:afterSwap delay:1s [document.visibilityState === 'visible'],
+                        visibilitychange[document.visibilityState === 'visible'] from:document
+                    "
                     hx-swap="innerHTML"
                 >
                     {{ template "comp_build_list" .BuildCards }}
