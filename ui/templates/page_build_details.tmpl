@@ -4,9 +4,6 @@
     <head>
         {{ template "comp_head" }}
 
-        <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous"></script>
-        <script src="https://cdn.jsdelivr.net/npm/htmx-ext-sse@2.2.4" integrity="sha384-A986SAtodyH8eg8x8irJnYUk7i9inVQqYigD6qZ9evobksGNIXfeFvDwLSHcp31N" crossorigin="anonymous"></script>
-
         <title>CI</title>
     </head>
 
@@ -16,36 +13,61 @@
         </header>
 
         <main>
-            <section id="build-title">
-                <div class="build-title-container">
-                    <span class="build-title-name">{{ .RepoOwner }}/{{ .RepoName }} #{{ .Number }}</span>
-                    <span class="build-title-message">{{ .Message }}</span>
-                    <span class="build-title-status" style="{{ template "comp_build_status_color" .Status }}">{{ .Status }}</span>
-                </div>
-            </section>
+            {{ template "comp_update_poller" . }}
+
+            {{ template "comp_build_header" . }}
+
             <section id="build-logs">
-                <div
-                    id="sse-logs"
-                    hx-ext="sse"
-                    sse-connect="/hx/builds/{{ .ID }}/log-stream?fromLine={{ len .LogLines }}"
-                    sse-swap="log-line"
-                    hx-swap="beforeend"
-                    hx-target="#log-container"
-                    sse-close="build-finished"
-                ></div>
-                <div id="log-container" class="log-container">
-                    {{- range $i, $e := .LogLines }}
-                        {{ template "comp_log_line" . }}
-                    {{- end }}
-                </div>
+                {{ template "comp_log_container" . }}
             </section>
         </main>
     </body>
 </html>
 {{ end }}
 
-{{ define "comp_log_line" }}
-<span class="log-line-number">{{ .Number }}</span>
-<span class="log-text">{{ .Text }}</span>
-<span class="log-time">{{ formatDuration .TimeSinceStart }}</span>
+
+{{ define "resp_build_details_update" }}
+{{ template "comp_log_container" . }}
+
+{{ template "comp_build_header" . }}
+
+{{ template "comp_update_poller" . }}
+{{ end }}
+
+
+{{ define "comp_update_poller" }}
+<!-- Only poll when there are still changes expected -->
+{{ if or (eq .Status "pending") (eq .Status "running") }}
+<div
+    id="update-poller"
+    hx-get="/hx/builds/{{ .ID }}?fromLine={{ .LastLogLineNr }}"
+    hx-trigger="
+        every 1s [document.visibilityState === 'visible'],
+        visibilitychange[document.visibilityState === 'visible'] from:document
+    "
+    hx-swap="outerHTML"
+></div>
+{{ end }}
+{{ end }}
+
+
+{{ define "comp_build_header" }}
+<section id="build-header" hx-swap-oob="outerHTML">
+    <div class="build-header-container">
+        <span class="build-header-name">{{ .RepoOwner }}/{{ .RepoName }} #{{ .Number }}</span>
+        <span class="build-header-message">{{ .Message }}</span>
+        <span class="build-header-status" style="{{ template "comp_build_status_color" .Status }}">{{ .Status }}</span>
+    </div>
+</section>
+{{ end }}
+
+
+{{ define "comp_log_container" }}
+<div id="log-container" class="log-container" hx-swap-oob="beforeend">
+    {{- range $i, $e := .LogLines }}
+        <span class="log-line-number">{{ .Number }}</span>
+        <span class="log-text">{{ .Text }}</span>
+        <span class="log-time">{{ formatDuration .TimeSinceStart }}</span>
+    {{- end }}
+</div>
 {{ end }}

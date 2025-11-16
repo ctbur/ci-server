@@ -36,7 +36,7 @@ func Handler(
 	uiMux.Handle("GET /{$}", ui.HandleBuildList(db, tmpl))
 	uiMux.Handle("GET /hx/builds", ui.HandleBuildListFragment(db, tmpl))
 	uiMux.Handle("GET /builds/{build_id}", ui.HandleBuildDetails(db, fs, tmpl))
-	uiMux.Handle("GET /hx/builds/{build_id}/log-stream", ui.HandleLogStream(db, fs, tmpl))
+	uiMux.Handle("GET /hx/builds/{build_id}", ui.HandleBuildDetailsFragment(db, fs, tmpl))
 	mux.Handle("/", userAuth.Middleware(uiMux))
 
 	return ctxlog.Middleware(mux)
@@ -50,9 +50,9 @@ func RunServer(ctx context.Context, handler http.Handler, port int) error {
 		Handler: handler,
 
 		ReadTimeout:       1 * time.Second,
-		WriteTimeout:      300 * time.Second, // Very long timeout for SSE
+		WriteTimeout:      2 * time.Second,
 		IdleTimeout:       30 * time.Second,
-		ReadHeaderTimeout: 2 * time.Second,
+		ReadHeaderTimeout: 1 * time.Second,
 	}
 
 	serverErrChan := make(chan error, 1)
