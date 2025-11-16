@@ -7,14 +7,14 @@ import (
 	"time"
 )
 
-var TemplateFuncMap = template.FuncMap{
-	"add":            Add,
-	"formatDuration": FormatDuration,
-	"formatTime":     FormatTime,
-	"icon":           IncludeIcon,
+var templateFuncMap = template.FuncMap{
+	"add":            add,
+	"formatDuration": formatDuration,
+	"formatTime":     formatTime,
+	"icon":           includeIcon,
 }
 
-func IncludeIcon(name string) (template.HTML, error) {
+func includeIcon(name string) (template.HTML, error) {
 	iconPath := fmt.Sprintf("icons/%s.svg", name)
 	data, err := embeddedIconsFS.ReadFile(iconPath)
 	if err != nil {
@@ -25,11 +25,11 @@ func IncludeIcon(name string) (template.HTML, error) {
 	return template.HTML(data), nil // #nosec G203
 }
 
-func Add(a, b int) int {
+func add(a, b int) int {
 	return a + b
 }
 
-func FormatDuration(d time.Duration) string {
+func formatDuration(d time.Duration) string {
 	if d < 0 {
 		return "N/A"
 	}
@@ -59,7 +59,7 @@ func FormatDuration(d time.Duration) string {
 	return strings.TrimSpace(s)
 }
 
-func FormatTime(time *time.Time, format string) string {
+func formatTime(time *time.Time, format string) string {
 	if time == nil {
 		return "N/A"
 	}

@@ -15,14 +15,7 @@ var embeddedTemplatesFS embed.FS
 func LoadTemplates() (*template.Template, error) {
 	tmpl := template.New("")
 
-	tmpl = tmpl.Funcs(
-		template.FuncMap{
-			"add":            Add,
-			"formatDuration": FormatDuration,
-			"formatTime":     FormatTime,
-			"icon":           IncludeIcon,
-		},
-	)
+	tmpl = tmpl.Funcs(templateFuncMap)
 
 	parsedTemplates, err := tmpl.ParseFS(embeddedTemplatesFS, "*.tmpl")
 	if err != nil {
