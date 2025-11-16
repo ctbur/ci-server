@@ -3,7 +3,6 @@
 # Check if a URL was provided as an argument
 if [ -z "$1" ]; then
   echo "Usage: $0 <github_commit_url>"
-  echo "Ensure CI_USER and CI_PASSWORD environment variables are set."
   exit 1
 fi
 
@@ -53,7 +52,6 @@ echo "-----------------------------------"
 # Post the JSON payload to the webhook using curl
 curl -X POST \
      -H "Content-Type: application/json" \
-     -H "Authorization: Basic $(echo -n $CI_USER:$CI_PASSWORD | base64)" \
      -d "$commit_payload" \
      "http://localhost:8000/webhook/manual"
 

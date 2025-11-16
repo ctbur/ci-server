@@ -4,11 +4,14 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"os"
 	"time"
 )
 
 type loggerKey struct{}
+
+func ContextWithLogger(ctx context.Context, logger *slog.Logger) context.Context {
+	return context.WithValue(ctx, loggerKey{}, logger)
+}
 
 func FromContext(ctx context.Context) *slog.Logger {
 	logger := ctx.Value(loggerKey{})
@@ -22,7 +25,7 @@ func FromContext(ctx context.Context) *slog.Logger {
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		log := slog.New(slog.NewTextHandler(os.Stdout, nil))
+		log := FromContext(ctx)
 		log = log.With(
 			slog.String("method", r.Method),
 			slog.String("request", r.RequestURI),

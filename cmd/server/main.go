@@ -13,6 +13,7 @@ import (
 
 	"github.com/ctbur/ci-server/v2/internal/build"
 	"github.com/ctbur/ci-server/v2/internal/config"
+	"github.com/ctbur/ci-server/v2/internal/ctxlog"
 	"github.com/ctbur/ci-server/v2/internal/github"
 	"github.com/ctbur/ci-server/v2/internal/store"
 	"github.com/ctbur/ci-server/v2/internal/web"
@@ -47,9 +48,56 @@ func runServer() error {
 	}
 	flag.Parse()
 
-	var postgresURL string
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Handle SIGINT and SIGTERM.
+	go func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+		sig := <-sigChan
+		slog.Info("Received signal, shutting down...", slog.String("signal", sig.String()))
+		cancel()
+	}()
+
+	// Load configuration
+	configFile := path.Join(*configDir, "ci-config.toml")
+	cfg, err := config.Load(os.Getenv("CI_SERVER_SECRET_KEY"), configFile)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %v", err)
+	}
+
+	cfg.DevMode = false
 	if os.Getenv("CI_SERVER_DEV") == "1" {
-		slog.Info("Starting in development mode")
+		slog.Info("Starting in development mode based on CI_SERVER_DEV=1")
+		slog.Warn("Development mode is not secure and should not be used in production!")
+		cfg.DevMode = true
+	}
+
+	// Set global logger for context
+	logLevel := slog.LevelInfo
+	if cfg.DevMode {
+		logLevel = slog.LevelDebug
+	}
+	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel}))
+	ctx = ctxlog.ContextWithLogger(ctx, log)
+
+	// Load user authentication
+	htpasswdFile := path.Join(*configDir, "users.htpasswd")
+	// sec: Path is from a trusted user
+	htpasswd, err := os.ReadFile(htpasswdFile) // #nosec G304
+	if err != nil {
+		return fmt.Errorf("failed to load users.htpasswd: %v", err)
+	}
+
+	userAuth, err := auth.FromHtpasswd(string(htpasswd))
+	if err != nil {
+		return fmt.Errorf("failed to decode users.htpasswd: %v", err)
+	}
+
+	// Connect to database
+	var postgresURL string
+	if cfg.DevMode {
 		err, embeddedPostgresURL, cleanup := startDevDatabase()
 		if err != nil {
 			return err
@@ -65,48 +113,17 @@ func runServer() error {
 		slog.Info("Starting in production mode")
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Handle SIGINT and SIGTERM.
-	go func() {
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-		sig := <-sigChan
-		slog.Info("Received signal, shutting down...", slog.String("signal", sig.String()))
-		cancel()
-	}()
-
 	pool, err := pgxpool.New(ctx, postgresURL)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database: %v", err)
 	}
 	defer pool.Close()
 
-	// store.DropAllData(ctx, pool)
 	err = store.ApplyMigrations(slog.Default(), ctx, pool)
 	if err != nil {
 		return err
 	}
 	slog.Info("Schema 'public' recreated successfully")
-
-	configFile := path.Join(*configDir, "ci-config.toml")
-	cfg, err := config.Load(os.Getenv("CI_SERVER_SECRET_KEY"), configFile)
-	if err != nil {
-		return fmt.Errorf("failed to load config: %v", err)
-	}
-
-	htpasswdFile := path.Join(*configDir, "users.htpasswd")
-	// sec: Path is from a trusted user
-	htpasswd, err := os.ReadFile(htpasswdFile) // #nosec G304
-	if err != nil {
-		return fmt.Errorf("failed to load users.htpasswd: %v", err)
-	}
-
-	userAuth, err := auth.FromHtpasswd(string(htpasswd))
-	if err != nil {
-		return fmt.Errorf("failed to decode users.htpasswd: %v", err)
-	}
 
 	db := store.NewPGStore(pool)
 	err = store.InitRepositories(ctx, &db, cfg)

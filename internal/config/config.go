@@ -7,6 +7,7 @@ import (
 )
 
 type Config struct {
+	DevMode bool          // Set based on environment, not from config file
 	HostURL string        `toml:"host_url"`
 	DataDir string        `toml:"data_dir"`
 	GitHub  *GitHubConfig `toml:"github"`

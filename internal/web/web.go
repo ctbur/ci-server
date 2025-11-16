@@ -28,8 +28,10 @@ func handler(
 	staticFileServer := http.FileServer(http.FS(ui.StaticFS))
 	mux.Handle("/static/", http.StripPrefix("/static/", staticFileServer))
 
-	mux.Handle("POST /webhook/manual", userAuth.Middleware(webhook.HandleManual(db, cfg)))
 	mux.Handle("POST /webhook/github", webhook.HandleGitHub(db, cfg))
+	if cfg.DevMode {
+		mux.Handle("POST /webhook/manual", webhook.HandleManual(db, cfg))
+	}
 
 	uiMux := http.NewServeMux()
 	uiMux.Handle("GET /{$}", ui.HandleBuildList(db, tmpl))
