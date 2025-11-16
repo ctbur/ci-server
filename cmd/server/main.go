@@ -17,7 +17,6 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/store"
 	"github.com/ctbur/ci-server/v2/internal/web"
 	"github.com/ctbur/ci-server/v2/internal/web/auth"
-	"github.com/ctbur/ci-server/v2/internal/web/ui"
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -40,7 +39,6 @@ func main() {
 
 func runServer() error {
 	configDir := flag.String("config", ".", "Path to the directory containing ci-config.toml and users.htpasswd.")
-	libDir := flag.String("lib", ".", "Path to the directory containing the SQL migrations and ui directories.")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n", os.Args[0])
@@ -86,8 +84,7 @@ func runServer() error {
 	defer pool.Close()
 
 	// store.DropAllData(ctx, pool)
-	migrationsDir := path.Join(*libDir, "migrations")
-	err = store.ApplyMigrations(slog.Default(), ctx, pool, migrationsDir)
+	err = store.ApplyMigrations(slog.Default(), ctx, pool)
 	if err != nil {
 		return err
 	}
@@ -109,11 +106,6 @@ func runServer() error {
 	userAuth, err := auth.FromHtpasswd(string(htpasswd))
 	if err != nil {
 		return fmt.Errorf("failed to decode users.htpasswd: %v", err)
-	}
-
-	tmpl, err := ui.LoadTemplates()
-	if err != nil {
-		return fmt.Errorf("failed to load templates: %v", err)
 	}
 
 	db := store.NewPGStore(pool)
@@ -152,9 +144,7 @@ func runServer() error {
 	processor := build.NewProcessor(cfg, &fs, &db, githubApp)
 	go processor.Run(ctx)
 
-	staticFileDir := path.Join(*libDir, "ui/static/")
-	handler := web.Handler(cfg, userAuth, &db, &fs, tmpl, staticFileDir)
-	err = web.RunServer(ctx, handler, 8000)
+	err = web.RunServer(ctx, 8000, cfg, userAuth, &db, &fs)
 	if err != nil {
 		return fmt.Errorf("error during web server execution: %w", err)
 	}

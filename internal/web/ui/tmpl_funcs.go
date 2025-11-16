@@ -22,7 +22,7 @@ func IncludeIcon(name string) (template.HTML, error) {
 	}
 
 	// sec: template.HTML is safe here as the content is trusted
-	return template.HTML(data), nil
+	return template.HTML(data), nil // #nosec G203
 }
 
 func Add(a, b int) int {

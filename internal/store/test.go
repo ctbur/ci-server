@@ -72,8 +72,7 @@ func StartTestDatabase(
 	}
 
 	log := test.Logger(t)
-	migrationsDir := path.Join(repoDir, "migrations")
-	err = ApplyMigrations(log, ctx, pool, migrationsDir)
+	err = ApplyMigrations(log, ctx, pool)
 	if err != nil {
 		return fmt.Errorf("failed to apply migrations: %v", err), nil, nil
 	}
