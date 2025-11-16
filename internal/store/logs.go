@@ -1,7 +1,6 @@
 package store
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -25,7 +24,7 @@ type LogEntry struct {
 	Text      string    `json:"text"`
 }
 
-func (fs *FSStore) GetLogs(ctx context.Context, buildID uint64) ([]LogEntry, error) {
+func (fs *FSStore) GetLogs(ctx context.Context, buildID uint64, fromLine int) ([]LogEntry, error) {
 	LogFilePath := path.Join(fs.RootDir, "build-logs", fmt.Sprintf("%d.jsonl", buildID))
 
 	// sec: Path is from a trusted user
@@ -41,6 +40,7 @@ func (fs *FSStore) GetLogs(ctx context.Context, buildID uint64) ([]LogEntry, err
 	decoder := json.NewDecoder(logFile)
 	var logs []LogEntry
 
+	currentLine := 0
 	for {
 		var entry LogEntry
 		err := decoder.Decode(&entry)
@@ -51,68 +51,12 @@ func (fs *FSStore) GetLogs(ctx context.Context, buildID uint64) ([]LogEntry, err
 			return nil, fmt.Errorf("failed to decode log entry from '%s': %w", LogFilePath, err)
 		}
 
-		logs = append(logs, entry)
+		// Skip lines until we reach fromLine - inefficient but good enough for now
+		if currentLine >= fromLine {
+			logs = append(logs, entry)
+		}
+		currentLine++
 	}
 
 	return logs, nil
-}
-
-func (fs FSStore) TailLogs(buildID uint64, fromLine uint) *LogTailer {
-	return &LogTailer{
-		logFilePath: path.Join(fs.RootDir, "build-logs", fmt.Sprintf("%d.jsonl", buildID)),
-		linesToSkip: fromLine,
-	}
-}
-
-type LogTailer struct {
-	logFilePath string
-	logFile     *os.File
-	logReader   *bufio.Reader
-	linesToSkip uint
-}
-
-func (t *LogTailer) Read() ([]LogEntry, error) {
-	// Open log file if not yet open
-	if t.logReader == nil {
-		file, err := os.Open(t.logFilePath)
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil
-		} else if err != nil {
-			return nil, err
-		}
-
-		t.logFile = file
-		t.logReader = bufio.NewReader(file)
-	}
-
-	// Read until blocked
-	var logEntries []LogEntry
-	for {
-		line, err := t.logReader.ReadString('\n')
-		if errors.Is(err, io.EOF) {
-			return logEntries, nil
-		} else if err != nil {
-			return logEntries, err
-		}
-
-		// Skip desired number of lines
-		if t.linesToSkip > 0 {
-			t.linesToSkip--
-			continue
-		}
-
-		var logEntry LogEntry
-		err = json.Unmarshal([]byte(line), &logEntry)
-		if err != nil {
-			return logEntries, fmt.Errorf("failed to unmarshal log entry: %w", err)
-		}
-		logEntries = append(logEntries, logEntry)
-	}
-}
-
-func (t *LogTailer) Close() error {
-	if t.logFile != nil {
-		return t.logFile.Close()
-	}
-	return nil
 }

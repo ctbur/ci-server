@@ -85,6 +85,7 @@ func HandleBuildListFragment(db *store.DBStore, tmpl *template.Template) http.Ha
 		ctx := r.Context()
 		log := ctxlog.FromContext(ctx)
 
+		// TODO: also update pagination links
 		_, buildCards, ok := getBuildCards(db, w, r)
 		if !ok {
 			return

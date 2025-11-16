@@ -36,7 +36,7 @@ func Handler(
 	uiMux.Handle("GET /{$}", ui.HandleBuildList(db, tmpl))
 	uiMux.Handle("GET /hx/builds", ui.HandleBuildListFragment(db, tmpl))
 	uiMux.Handle("GET /builds/{build_id}", ui.HandleBuildDetails(db, fs, tmpl))
-	uiMux.Handle("GET /hx/builds/{build_id}/log-stream", ui.HandleLogStream(db, fs, tmpl))
+	uiMux.Handle("GET /hx/builds/{build_id}", ui.HandleBuildDetailsFragment(db, fs, tmpl))
 	mux.Handle("/", userAuth.Middleware(uiMux))
 
 	return ctxlog.Middleware(mux)

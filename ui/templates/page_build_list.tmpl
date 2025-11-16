@@ -4,8 +4,6 @@
     <head>
         {{ template "comp_head" }}
 
-        <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous"></script>
-
         <title>CI</title>
     </head>
 
@@ -19,8 +17,7 @@
                 <ul class="build-list"
                     hx-get="/hx/builds?page={{ .CurrentPage }}"
                     hx-trigger="
-                        load [document.visibilityState === 'visible'],
-                        htmx:afterSwap delay:1s [document.visibilityState === 'visible'],
+                        every 1s [document.visibilityState === 'visible'],
                         visibilitychange[document.visibilityState === 'visible'] from:document
                     "
                     hx-swap="innerHTML"
@@ -56,6 +53,7 @@
     </body>
 </html>
 {{ end }}
+
 
 {{ define "comp_build_list" }}
 {{- range . }}

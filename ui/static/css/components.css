@@ -84,7 +84,7 @@
 
 /* BUILD TITLE */
 
-.build-title-container {
+.build-header-container {
     display: flex;
     align-items: center;
 
@@ -93,11 +93,11 @@
     gap: 1rem;
 }
 
-.build-title-name {
+.build-header-name {
     font-weight: bold;
 }
 
-.build-title-message {
+.build-header-message {
     font-weight: normal;
 
     text-overflow: ellipsis;
@@ -106,7 +106,7 @@
     color: var(--text-secondary-color);
 }
 
-.build-title-status {
+.build-header-status {
     font-weight: bold;
 
     margin-left: auto;
