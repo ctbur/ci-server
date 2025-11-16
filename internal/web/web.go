@@ -16,17 +16,16 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/web/webhook"
 )
 
-func Handler(
+func handler(
 	cfg *config.Config,
 	userAuth auth.UserAuth,
 	db *store.DBStore,
 	fs *store.FSStore,
 	tmpl *template.Template,
-	staticFileDir string,
 ) http.Handler {
 	mux := http.NewServeMux()
 
-	staticFileServer := http.FileServer(http.Dir(staticFileDir))
+	staticFileServer := http.FileServer(http.FS(ui.StaticFS))
 	mux.Handle("/static/", http.StripPrefix("/static/", staticFileServer))
 
 	mux.Handle("POST /webhook/manual", userAuth.Middleware(webhook.HandleManual(db, cfg)))
@@ -42,8 +41,22 @@ func Handler(
 	return ctxlog.Middleware(mux)
 }
 
-func RunServer(ctx context.Context, handler http.Handler, port int) error {
+func RunServer(
+	ctx context.Context,
+	port int,
+	cfg *config.Config,
+	userAuth auth.UserAuth,
+	db *store.DBStore,
+	fs *store.FSStore,
+) error {
 	log := ctxlog.FromContext(ctx)
+
+	tmpl, err := ui.LoadTemplates()
+	if err != nil {
+		return fmt.Errorf("failed to load templates: %v", err)
+	}
+
+	handler := handler(cfg, userAuth, db, fs, tmpl)
 
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),

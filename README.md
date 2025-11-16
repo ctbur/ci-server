@@ -44,4 +44,4 @@ NoNewPrivileges=true
 WantedBy=multi-user.target
 ```
 
-Using [Fontawesome](https://fontawesome.com/) icons in internal/web/ui/fontawesome.go
+Using [Fontawesome](https://fontawesome.com/) icons

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"embed"
 	"fmt"
 	"log/slog"
 	"os"
@@ -26,14 +27,18 @@ func DropAllData(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
-func ApplyMigrations(log *slog.Logger, ctx context.Context, pool *pgxpool.Pool, migrationsDir string) error {
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
+var migrationsDir = "migrations"
+
+func ApplyMigrations(log *slog.Logger, ctx context.Context, pool *pgxpool.Pool) error {
 	conn, err := pool.Acquire(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to aqcuire connection to run migrations: %v", err)
 	}
 	defer conn.Release()
 
-	files, err := os.ReadDir(migrationsDir)
+	files, err := migrationsFS.ReadDir(migrationsDir)
 	if err != nil {
 		return fmt.Errorf("failed to read migrations directory: %v\n", err)
 	}

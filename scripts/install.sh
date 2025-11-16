@@ -37,8 +37,8 @@ else
 fi
 
 echo "Copying files..."
+# TODO: this script can probably be simplified given that now we only have one binary to copy
 rsync -e "ssh ${SSH_OPTS}" -avz "./build/ci-server" "${REMOTE_HOST}:${BASE_DIR}/bin/ci-server"
-rsync -e "ssh ${SSH_OPTS}" -avz "./migrations" "./ui" "${REMOTE_HOST}:${BASE_DIR}/share/ci-server/"
 echo ""
 
 echo "Restarting service..."
