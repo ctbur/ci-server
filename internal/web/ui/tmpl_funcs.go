@@ -14,6 +14,17 @@ var TemplateFuncMap = template.FuncMap{
 	"icon":           IncludeIcon,
 }
 
+func IncludeIcon(name string) (template.HTML, error) {
+	iconPath := fmt.Sprintf("icons/%s.svg", name)
+	data, err := embeddedIconsFS.ReadFile(iconPath)
+	if err != nil {
+		return "", err
+	}
+
+	// sec: template.HTML is safe here as the content is trusted
+	return template.HTML(data), nil
+}
+
 func Add(a, b int) int {
 	return a + b
 }

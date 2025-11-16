@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"html/template"
 	"log/slog"
 	"net/http"
 	"os"
@@ -112,8 +111,7 @@ func runServer() error {
 		return fmt.Errorf("failed to decode users.htpasswd: %v", err)
 	}
 
-	tmpl, err := template.New("main").Funcs(ui.TemplateFuncMap).
-		ParseGlob(path.Join(*libDir, "ui/templates/*.tmpl"))
+	tmpl, err := ui.LoadTemplates()
 	if err != nil {
 		return fmt.Errorf("failed to load templates: %v", err)
 	}

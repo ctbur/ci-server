@@ -26,7 +26,7 @@ func Handler(
 ) http.Handler {
 	mux := http.NewServeMux()
 
-	staticFileServer := http.FileServer(http.Dir(staticFileDir))
+	staticFileServer := http.FileServer(http.FS(ui.StaticFS))
 	mux.Handle("/static/", http.StripPrefix("/static/", staticFileServer))
 
 	mux.Handle("POST /webhook/manual", userAuth.Middleware(webhook.HandleManual(db, cfg)))
