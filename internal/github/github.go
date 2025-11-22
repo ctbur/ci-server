@@ -20,7 +20,7 @@ import (
 type GitHubApp struct {
 	client                *http.Client
 	privateKey            *rsa.PrivateKey
-	appID                 uint64
+	appID                 ApplicationID
 	appToken              string
 	appTokenExpiry        time.Time
 	mapInstallationTokens map[InstallationID]struct {
@@ -29,8 +29,12 @@ type GitHubApp struct {
 	}
 }
 
+type ApplicationID uint64
+
+type InstallationID uint64
+
 func NewGitHubApp(
-	client *http.Client, privateKey *rsa.PrivateKey, appID uint64,
+	client *http.Client, privateKey *rsa.PrivateKey, appID ApplicationID,
 ) *GitHubApp {
 	return &GitHubApp{
 		client:     client,
@@ -85,8 +89,6 @@ func (a *GitHubApp) issueAppToken(now time.Time) (string, time.Time, error) {
 
 	return payload + "." + base64.RawURLEncoding.EncodeToString(sig), expiresAt, nil
 }
-
-type InstallationID uint64
 
 func (a *GitHubApp) getInstallationToken(ctx context.Context, installation InstallationID) (string, error) {
 	t, exist := a.mapInstallationTokens[installation]
