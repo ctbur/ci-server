@@ -1,7 +1,8 @@
 .PHONY: dev lint test build install
 
 dev:
-	CI_SERVER_DEV=1 go run ./cmd/server
+	@set -a && . ./dev-setup/server-secrets.env && set +a && \
+		CI_SERVER_DEV=1 go run ./cmd/server --config ./dev-setup
 
 lint:
 	@echo "Checking go.mod..."

@@ -1,0 +1,14 @@
+[
+  {
+    "label": "Run Dev Server",
+    "adapter": "Delve",
+    "request": "launch",
+    "mode": "debug",
+    "program": "./cmd/server",
+    "args": ["--config", "./dev-setup"],
+    "env": {
+      "CI_SERVER_DEV": "1"
+    },
+    "envFile": "./dev-setup/server-secrets.env"
+  }
+]
