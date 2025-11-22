@@ -40,6 +40,10 @@ func NewGitHubApp(
 		client:     client,
 		privateKey: privateKey,
 		appID:      appID,
+		installationTokens: make(map[InstallationID]struct {
+			token  string
+			expiry time.Time
+		}),
 	}
 }
 
