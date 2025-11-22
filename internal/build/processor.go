@@ -161,6 +161,7 @@ func (p *Processor) process(ctx context.Context) {
 				log.ErrorContext(
 					ctx,
 					"failed to create finished commit status",
+					slog.Uint64("installation_id", uint64(p.Installation)),
 					slog.Uint64("build_id", br.BuildID),
 					slog.Any("error", err),
 				)
@@ -238,6 +239,7 @@ func (p *Processor) process(ctx context.Context) {
 				log.ErrorContext(
 					ctx,
 					"failed to create pending commit status",
+					slog.Uint64("installation_id", uint64(p.Installation)),
 					slog.Uint64("build_id", b.ID),
 					slog.Any("error", err),
 				)
