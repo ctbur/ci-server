@@ -171,11 +171,11 @@ func startDevDatabase() (error, string, func()) {
 			Username("ci-server").
 			Password("123456").
 			Database("ci").
-			CachePath("./data/postgres/").
-			RuntimePath("./data/postgres/extracted").
+			CachePath("./.data/postgres/").
+			RuntimePath("./.data/postgres/extracted").
 			// Configures data to be persistent because DataPath is outside RuntimePath
-			DataPath("./data/postgres/data").
-			BinariesPath("./data/postgres/extracted"),
+			DataPath("./.data/postgres/data").
+			BinariesPath("./.data/postgres/extracted"),
 	)
 	err := postgres.Start()
 	if err != nil {

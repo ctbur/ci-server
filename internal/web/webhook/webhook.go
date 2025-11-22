@@ -10,11 +10,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ctbur/ci-server/v2/internal/github"
 	"github.com/ctbur/ci-server/v2/internal/store"
 )
 
 type BuildCreator interface {
-	CreateBuild(ctx context.Context, repoOwner, repoName string, build store.BuildMeta, ts time.Time) (uint64, error)
+	CreateBuild(
+		ctx context.Context,
+		installationID github.InstallationID,
+		repoOwner, repoName string,
+		build store.BuildMeta,
+		ts time.Time,
+	) (uint64, error)
 }
 
 func decodeJSON[T any](body io.Reader) (*T, error) {

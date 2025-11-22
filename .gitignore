@@ -1,3 +1,4 @@
 /build
-/data
+# Start with a . so that Go tools won't be confused when they scan for packages
+/.data
 /dev-setup

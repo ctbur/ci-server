@@ -11,6 +11,7 @@ import (
 
 	"github.com/ctbur/ci-server/v2/internal/assert"
 	"github.com/ctbur/ci-server/v2/internal/config"
+	"github.com/ctbur/ci-server/v2/internal/github"
 	"github.com/ctbur/ci-server/v2/internal/store"
 )
 
@@ -49,23 +50,29 @@ type MockBuildCreator struct {
 }
 
 type MockBuild struct {
+	InstallationID      github.InstallationID
 	RepoOwner, RepoName string
 	BuildMeta           store.BuildMeta
 	TS                  time.Time
 }
 
 func (c *MockBuildCreator) CreateBuild(
-	ctx context.Context, repoOwner, repoName string, build store.BuildMeta, ts time.Time,
+	ctx context.Context,
+	installationID github.InstallationID,
+	repoOwner, repoName string,
+	build store.BuildMeta,
+	ts time.Time,
 ) (uint64, error) {
 	if c.Build != nil {
 		panic("Can only create one build per MockBuildCreator")
 	}
 
 	c.Build = &MockBuild{
-		RepoOwner: repoOwner,
-		RepoName:  repoName,
-		BuildMeta: build,
-		TS:        ts,
+		InstallationID: installationID,
+		RepoOwner:      repoOwner,
+		RepoName:       repoName,
+		BuildMeta:      build,
+		TS:             ts,
 	}
 
 	return 1, nil

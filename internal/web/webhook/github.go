@@ -15,6 +15,7 @@ import (
 
 	"github.com/ctbur/ci-server/v2/internal/config"
 	"github.com/ctbur/ci-server/v2/internal/ctxlog"
+	"github.com/ctbur/ci-server/v2/internal/github"
 	"github.com/ctbur/ci-server/v2/internal/store"
 )
 
@@ -134,7 +135,9 @@ func HandleGitHub(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 			return
 		}
 
-		buildID, err := b.CreateBuild(ctx, owner, name, build, time.Now())
+		buildID, err := b.CreateBuild(
+			ctx, github.InstallationID(installationID), owner, name, build, time.Now(),
+		)
 		if err != nil {
 			log.ErrorContext(ctx, "Failed to create build", slog.Any("error", err))
 			http.Error(w, "Failed to create build", http.StatusInternalServerError)

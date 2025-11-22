@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/assert"
+	"github.com/ctbur/ci-server/v2/internal/github"
 )
 
 func TestBuildStore(t *testing.T) {
@@ -52,7 +53,9 @@ func TestBuildStore(t *testing.T) {
 			CommitSHA: "000011",
 			Message:   "message_r1b1",
 		}
-		r1b1ID, err := s.CreateBuild(ctx, "owner", "repo1", r1b1, time.UnixMilli(11))
+		r1b1ID, err := s.CreateBuild(
+			ctx, github.InstallationID(100), "owner", "repo1", r1b1, time.UnixMilli(11),
+		)
 		assert.NoError(t, err, "Failed to create build").Fatal()
 		assert.Equal(t, r1b1ID, 1, "Incorrect ID for build").Fatal()
 
@@ -62,7 +65,9 @@ func TestBuildStore(t *testing.T) {
 			CommitSHA: "000012",
 			Message:   "message_r1b2",
 		}
-		r1b2ID, err := s.CreateBuild(ctx, "owner", "repo1", r1b2, time.UnixMilli(12))
+		r1b2ID, err := s.CreateBuild(
+			ctx, github.InstallationID(100), "owner", "repo1", r1b2, time.UnixMilli(12),
+		)
 		assert.NoError(t, err, "Failed to create build").Fatal()
 		assert.Equal(t, r1b2ID, 2, "Incorrect ID for build").Fatal()
 
@@ -72,7 +77,9 @@ func TestBuildStore(t *testing.T) {
 			CommitSHA: "000021",
 			Message:   "message_r2b1",
 		}
-		r2b1ID, err := s.CreateBuild(ctx, "owner", "repo2", r2b1, time.UnixMilli(21))
+		r2b1ID, err := s.CreateBuild(
+			ctx, github.InstallationID(200), "owner", "repo2", r2b1, time.UnixMilli(21),
+		)
 		assert.NoError(t, err, "Failed to create build").Fatal()
 		assert.Equal(t, r2b1ID, 3, "Incorrect ID for build").Fatal()
 
@@ -82,7 +89,9 @@ func TestBuildStore(t *testing.T) {
 			CommitSHA: "000022",
 			Message:   "message_r2b2",
 		}
-		r2b2ID, err := s.CreateBuild(ctx, "owner", "repo2", r2b2, time.UnixMilli(22))
+		r2b2ID, err := s.CreateBuild(
+			ctx, github.InstallationID(200), "owner", "repo2", r2b2, time.UnixMilli(22),
+		)
 		assert.NoError(t, err, "Failed to create build").Fatal()
 		assert.Equal(t, r2b2ID, 4, "Incorrect ID for build").Fatal()
 
@@ -150,6 +159,9 @@ func TestBuildStore(t *testing.T) {
 		assert.Equal(t, pendingBuilds[1].ID, 2, "Incorrect order of pending builds")
 		assert.Equal(t, pendingBuilds[2].ID, 3, "Incorrect order of pending builds")
 		assert.Equal(t, pendingBuilds[3].ID, 4, "Incorrect order of pending builds")
+		// Should have installation IDs per repo
+		assert.Equal(t, pendingBuilds[0].InstallationID, github.InstallationID(100), "Incorrect installation ID")
+		assert.Equal(t, pendingBuilds[2].InstallationID, github.InstallationID(200), "Incorrect installation ID")
 
 		runningBuilders, err := s.ListBuilders(ctx)
 		assert.NoError(t, err, "Failed to get running builds")
@@ -206,6 +218,9 @@ func TestBuildStore(t *testing.T) {
 		// Check cache ID in order of build ID
 		assert.Equal(t, *builders[0].CacheID, 1, "Incorrect cache ID")
 		assert.Equal(t, builders[1].CacheID, nil, "Incorrect cache ID")
+		// Should have installation IDs per repo
+		assert.Equal(t, builders[0].InstallationID, github.InstallationID(100), "Incorrect installation ID")
+		assert.Equal(t, builders[1].InstallationID, github.InstallationID(200), "Incorrect installation ID")
 
 		// Get list of build dirs to retain
 		buildIDs, err := s.ListBuildDirsInUse(ctx)

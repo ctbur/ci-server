@@ -49,10 +49,6 @@ type commitStatusCreator interface {
 		targetURL string,
 		contextStr string,
 	) error
-	GetInstallationID(
-		ctx context.Context,
-		owner, repo string,
-	) (github.InstallationID, error)
 }
 
 func NewProcessor(
@@ -132,16 +128,6 @@ func (p *Processor) process(ctx context.Context) {
 			continue
 		}
 
-		installationID, err := p.GitHub.GetInstallationID(ctx, br.Repo.Owner, br.Repo.Name)
-		if err != nil {
-			log.ErrorContext(
-				ctx,
-				"failed to get GitHub installation ID",
-				slog.Uint64("build_id", br.BuildID),
-				slog.Any("error", err),
-			)
-			continue
-		}
 		commitState := github.CommitStateError
 		switch result {
 		case store.BuildResultSuccess:
@@ -151,7 +137,7 @@ func (p *Processor) process(ctx context.Context) {
 		}
 		err = p.GitHub.CreateCommitStatus(
 			ctx,
-			installationID,
+			br.InstallationID,
 			br.Repo.Owner,
 			br.Repo.Name,
 			br.CommitSHA,
@@ -224,19 +210,9 @@ func (p *Processor) process(ctx context.Context) {
 			)
 		}
 
-		installationID, err := p.GitHub.GetInstallationID(ctx, b.Repo.Owner, b.Repo.Name)
-		if err != nil {
-			log.ErrorContext(
-				ctx,
-				"failed to get GitHub installation ID",
-				slog.Uint64("build_id", b.ID),
-				slog.Any("error", err),
-			)
-			continue
-		}
 		err = p.GitHub.CreateCommitStatus(
 			ctx,
-			installationID,
+			b.InstallationID,
 			b.Repo.Owner,
 			b.Repo.Name,
 			b.CommitSHA,

@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/ctxlog"
@@ -28,8 +27,6 @@ type GitHubApp struct {
 		token  string
 		expiry time.Time
 	}
-	// map from owner/repo to installation ID
-	installationIDs map[string]InstallationID
 }
 
 type ApplicationID uint64
@@ -165,68 +162,6 @@ func (a *GitHubApp) refreshInstallationToken(
 	)
 
 	return result.Token, result.ExpiresAt, nil
-}
-
-func (a *GitHubApp) GetInstallationID(
-	ctx context.Context,
-	owner, repo string,
-) (InstallationID, error) {
-	if id, exist := a.installationIDs[owner+"/"+repo]; exist {
-		return id, nil
-	}
-
-	log := ctxlog.FromContext(ctx)
-	log.InfoContext(ctx,
-		"Fetching GitHub Installation ID for repo",
-		slog.String("client", "github"),
-		slog.String("owner", owner),
-		slog.String("repo", repo),
-	)
-
-	url := fmt.Sprintf(
-		"https://api.github.com/repos/%s/%s/installation",
-		url.PathEscape(owner),
-		url.PathEscape(repo),
-	)
-	log.DebugContext(ctx,
-		"GetInstallationTokenForRepo",
-		slog.String("client", "github"),
-		slog.String("url", url),
-	)
-
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return 0, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	appToken, err := a.getAppToken(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("failed to issue app token: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+appToken)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-
-	resp, err := a.client.Do(req)
-	if err != nil {
-		return 0, fmt.Errorf("failed to perform request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	var result struct {
-		ID InstallationID `json:"id"`
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return 0, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	a.installationIDs[owner+"/"+repo] = result.ID
-	return result.ID, nil
 }
 
 type CommitState string
