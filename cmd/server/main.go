@@ -152,9 +152,8 @@ func runServer() error {
 		}
 		githubApp = github.NewGitHubApp(
 			&http.Client{},
-			cfg.GitHub.AppID,
-			cfg.GitHub.InstallationID,
 			ghAppPrivateKey,
+			cfg.GitHub.InstallationID,
 		)
 	}
 
