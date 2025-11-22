@@ -146,7 +146,7 @@ func TestBuilderE2E(t *testing.T) {
 	br := Builder{
 		FS:  &dataDir,
 		Git: &Git{},
-		RepoURLFormatter: func(owner, name string) string {
+		RepoURLFormatter: func(owner, name, accessToken string) string {
 			return fmt.Sprintf("file://%s", repoDir)
 		},
 		Cmd: &CmdRunner{FS: &dataDir},

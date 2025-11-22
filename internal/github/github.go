@@ -101,7 +101,7 @@ func (a *GitHubApp) issueAppToken(now time.Time) (string, time.Time, error) {
 	return payload + "." + base64.RawURLEncoding.EncodeToString(sig), expiresAt, nil
 }
 
-func (a *GitHubApp) getInstallationToken(ctx context.Context, installation InstallationID) (string, error) {
+func (a *GitHubApp) GetInstallationToken(ctx context.Context, installation InstallationID) (string, error) {
 	t, exist := a.installationTokens[installation]
 
 	if !exist || time.Until(t.expiry) < 2*time.Minute {
@@ -209,7 +209,7 @@ func (a *GitHubApp) CreateCommitStatus(
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	token, err := a.getInstallationToken(ctx, installation)
+	token, err := a.GetInstallationToken(ctx, installation)
 	if err != nil {
 		return fmt.Errorf("failed to get installation token: %w", err)
 	}
