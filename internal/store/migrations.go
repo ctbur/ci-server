@@ -62,7 +62,6 @@ func ApplyMigrations(log *slog.Logger, ctx context.Context, pool *pgxpool.Pool) 
 		}
 
 		path := filepath.Join(migrationsDir, file.Name())
-		// sec: Path is from a trusted user
 		sql, err := migrationsFS.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("failed to read migration file '%s': %v\n", path, err)
