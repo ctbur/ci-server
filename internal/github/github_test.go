@@ -10,7 +10,7 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/config"
 )
 
-func TestIssueJWT(t *testing.T) {
+func TestIssueAppToken(t *testing.T) {
 	testPrivateKey := `-----BEGIN PRIVATE KEY-----
 MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDo3l2OsBs9l+K1
 Wm+anfoETBD1t7vv31i7URPjLAbWrXfoRLvlABTCCIGaaaTItLqL6cJIpA+1vaqb
@@ -49,7 +49,8 @@ Sb4IRk/7baQtAAGhkTNe3gYQwTxlmuHT3HuNhhxTleED1vh0dmWFqJKmUQG838pG
 		privateKey: rsaKey,
 	}
 
-	jwt, err := gh.issueJWT(time.Unix(1762198371, 0))
+	issuedAt := time.Unix(1762198371, 0)
+	jwt, expiresAt, err := gh.issueAppToken(issuedAt)
 	if err != nil {
 		t.Fatalf("failed to issue JWT: %v", err)
 	}
@@ -60,4 +61,7 @@ Sb4IRk/7baQtAAGhkTNe3gYQwTxlmuHT3HuNhhxTleED1vh0dmWFqJKmUQG838pG
 		"WpHqJMtV7ZSQ3WvpuNbRZ_-cCi92pFDI-6zqhQb7EjIy9fraZkUCPyGwYpxJ1pWcS1ucWUJbLC99np6MpQ64ygLrlNwdlZPqzvfNRZXVNOdK" +
 		"o4MJ2Cj6qUTg_PPIB8XpZbQ"
 	assert.Equal(t, jwt, expectedJWT, "Incorrect JWT")
+
+	expectedExpiry := issuedAt.Add(9 * time.Minute)
+	assert.Equal(t, expiresAt, expectedExpiry, "Incorrect expiry time")
 }

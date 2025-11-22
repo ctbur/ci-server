@@ -18,35 +18,47 @@ import (
 )
 
 type GitHubApp struct {
-	client                  *http.Client
-	appID                   uint64
-	installationID          uint64
-	installationToken       string
-	installationTokenExpiry time.Time
-	privateKey              *rsa.PrivateKey
-}
-
-func NewGitHubApp(
-	client *http.Client,
-	appID uint64, installationID uint64,
-	privateKey *rsa.PrivateKey,
-) *GitHubApp {
-	return &GitHubApp{
-		client:                  client,
-		appID:                   appID,
-		installationID:          installationID,
-		installationToken:       "",
-		installationTokenExpiry: time.Time{},
-		privateKey:              privateKey,
+	client                *http.Client
+	privateKey            *rsa.PrivateKey
+	appID                 uint64
+	appToken              string
+	appTokenExpiry        time.Time
+	mapInstallationTokens map[InstallationID]struct {
+		token  string
+		expiry time.Time
 	}
 }
 
-func (a *GitHubApp) issueJWT(t time.Time) (string, error) {
+func NewGitHubApp(
+	client *http.Client, privateKey *rsa.PrivateKey, appID uint64,
+) *GitHubApp {
+	return &GitHubApp{
+		client:     client,
+		privateKey: privateKey,
+		appID:      appID,
+	}
+}
+
+func (a *GitHubApp) getAppToken() (string, error) {
+	if a.appToken == "" || time.Until(a.appTokenExpiry) < 2*time.Minute {
+		token, expiry, err := a.issueAppToken(time.Now())
+		if err != nil {
+			return "", fmt.Errorf("failed to issue app token: %w", err)
+		}
+		a.appToken = token
+		a.appTokenExpiry = expiry
+	}
+
+	return a.appToken, nil
+}
+
+func (a *GitHubApp) issueAppToken(now time.Time) (string, time.Time, error) {
+	expiresAt := now.Add(9 * time.Minute)
 	header := `{"typ":"JWT","alg":"RS256"}`
 	claims := fmt.Sprintf(
 		`{"iat":%d,"exp":%d,"iss":%d}`,
-		t.Add(-time.Minute).Unix(),  // issued 1 minute in the past to allow for clock drift
-		t.Add(9*time.Minute).Unix(), // expires in 9 minutes (max lifetime is 10 minutes)
+		now.Add(-time.Minute).Unix(), // issued 1 minute in the past to allow for clock drift
+		expiresAt.Unix(),             // expires in 9 minutes (max lifetime is 10 minutes)
 		a.appID,
 	)
 	payload := fmt.Sprintf(
@@ -57,7 +69,7 @@ func (a *GitHubApp) issueJWT(t time.Time) (string, error) {
 
 	if !crypto.SHA256.Available() {
 		// TODO: How can we ensure this never happens?
-		return "", errors.New("failed to sign JTW: SHA256 hash is unavailable")
+		return "", time.Time{}, errors.New("failed to sign JTW: SHA256 hash is unavailable")
 	}
 
 	// Hash
@@ -68,38 +80,43 @@ func (a *GitHubApp) issueJWT(t time.Time) (string, error) {
 	// Sign
 	sig, err := rsa.SignPKCS1v15(rand.Reader, a.privateKey, crypto.SHA256, hashed)
 	if err != nil {
-		return "", fmt.Errorf("failed to sign JTW: %w", err)
+		return "", time.Time{}, fmt.Errorf("failed to sign JTW: %w", err)
 	}
 
-	return payload + "." + base64.RawURLEncoding.EncodeToString(sig), nil
+	return payload + "." + base64.RawURLEncoding.EncodeToString(sig), expiresAt, nil
 }
 
-func (a *GitHubApp) getInstallationToken(ctx context.Context) (string, time.Time, error) {
-	if a.installationToken != "" || time.Until(a.installationTokenExpiry) < 2*time.Minute {
-		token, expiry, err := a.refreshInstallationToken(ctx)
+type InstallationID uint64
+
+func (a *GitHubApp) getInstallationToken(ctx context.Context, installation InstallationID) (string, error) {
+	t, exist := a.mapInstallationTokens[installation]
+
+	if !exist || time.Until(t.expiry) < 2*time.Minute {
+		token, expiry, err := a.refreshInstallationToken(ctx, installation)
 		if err != nil {
-			return "", time.Time{}, fmt.Errorf("failed to refresh installation token: %w", err)
+			return "", fmt.Errorf("failed to refresh installation token: %w", err)
 		}
-		a.installationToken = token
-		a.installationTokenExpiry = expiry
+		t.token = token
+		t.expiry = expiry
+		a.mapInstallationTokens[installation] = t
 	}
 
-	return a.installationToken, a.installationTokenExpiry, nil
+	return t.token, nil
 }
 
-func (a *GitHubApp) refreshInstallationToken(ctx context.Context) (string, time.Time, error) {
+func (a *GitHubApp) refreshInstallationToken(ctx context.Context, installation InstallationID) (string, time.Time, error) {
 	// Create request
-	url := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", a.installationID)
+	url := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", installation)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, nil)
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	jwt, err := a.issueJWT(time.Now())
+	appToken, err := a.getAppToken()
 	if err != nil {
-		return "", time.Time{}, fmt.Errorf("failed to issue JWT: %w", err)
+		return "", time.Time{}, fmt.Errorf("failed to issue app token: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+jwt)
+	req.Header.Set("Authorization", "Bearer "+appToken)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
@@ -138,6 +155,7 @@ const (
 
 func (a *GitHubApp) CreateCommitStatus(
 	ctx context.Context,
+	installation InstallationID,
 	owner, repo, sha string,
 	state CommitState,
 	description string,
@@ -167,7 +185,7 @@ func (a *GitHubApp) CreateCommitStatus(
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	token, _, err := a.getInstallationToken(ctx)
+	token, err := a.getInstallationToken(ctx, installation)
 	if err != nil {
 		return fmt.Errorf("failed to get installation token: %w", err)
 	}

@@ -13,12 +13,13 @@ import (
 )
 
 type Processor struct {
-	HostURL string
-	Repos   config.RepoConfigs
-	Builds  buildStore
-	Builder builderController
-	FS      processorFSStore
-	GitHub  commitStatusCreator
+	HostURL      string
+	Repos        config.RepoConfigs
+	Builds       buildStore
+	Builder      builderController
+	FS           processorFSStore
+	GitHub       commitStatusCreator
+	Installation github.InstallationID
 }
 
 type buildStore interface {
@@ -42,6 +43,7 @@ type processorFSStore interface {
 type commitStatusCreator interface {
 	CreateCommitStatus(
 		ctx context.Context,
+		installation github.InstallationID,
 		owner, repo, sha string,
 		state github.CommitState,
 		description string,
@@ -55,8 +57,10 @@ func NewProcessor(
 ) *Processor {
 	// Ensure that interface is nil when gh is nil
 	var pgh commitStatusCreator
+	var installation github.InstallationID
 	if gh != nil {
 		pgh = gh
+		installation = github.InstallationID(cfg.GitHub.InstallationID)
 	}
 
 	return &Processor{
@@ -66,6 +70,8 @@ func NewProcessor(
 		FS:      fs,
 		Builder: &BuilderController{FS: fs},
 		GitHub:  pgh,
+		// TODO: support multiple installations
+		Installation: installation,
 	}
 }
 
@@ -142,6 +148,7 @@ func (p *Processor) process(ctx context.Context) {
 			}
 			err = p.GitHub.CreateCommitStatus(
 				ctx,
+				p.Installation,
 				br.Repo.Owner,
 				br.Repo.Name,
 				br.CommitSHA,
@@ -218,6 +225,7 @@ func (p *Processor) process(ctx context.Context) {
 		if p.GitHub != nil {
 			err = p.GitHub.CreateCommitStatus(
 				ctx,
+				p.Installation,
 				b.Repo.Owner,
 				b.Repo.Name,
 				b.CommitSHA,
