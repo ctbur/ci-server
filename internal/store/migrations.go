@@ -5,7 +5,6 @@ import (
 	"embed"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"sort"
 
@@ -63,8 +62,7 @@ func ApplyMigrations(log *slog.Logger, ctx context.Context, pool *pgxpool.Pool) 
 		}
 
 		path := filepath.Join(migrationsDir, file.Name())
-		// sec: Path is from a trusted user
-		sql, err := os.ReadFile(path) // #nosec: G304
+		sql, err := migrationsFS.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("failed to read migration file '%s': %v\n", path, err)
 		}

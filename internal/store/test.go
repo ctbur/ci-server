@@ -49,7 +49,7 @@ func StartTestDatabase(
 			Username("ci-server").
 			Password("123456").
 			Database("ci").
-			BinariesPath(path.Join(repoDir, "./data/postgres/extracted")).
+			BinariesPath(path.Join(repoDir, "./.data/postgres/extracted")).
 			// TODO: what would be a clean way to show the DB logs?
 			Logger(io.Discard).
 			RuntimePath(tempDir).

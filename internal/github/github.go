@@ -18,12 +18,12 @@ import (
 )
 
 type GitHubApp struct {
-	client                *http.Client
-	privateKey            *rsa.PrivateKey
-	appID                 ApplicationID
-	appToken              string
-	appTokenExpiry        time.Time
-	mapInstallationTokens map[InstallationID]struct {
+	client             *http.Client
+	privateKey         *rsa.PrivateKey
+	appID              ApplicationID
+	appToken           string
+	appTokenExpiry     time.Time
+	installationTokens map[InstallationID]struct {
 		token  string
 		expiry time.Time
 	}
@@ -40,10 +40,14 @@ func NewGitHubApp(
 		client:     client,
 		privateKey: privateKey,
 		appID:      appID,
+		installationTokens: make(map[InstallationID]struct {
+			token  string
+			expiry time.Time
+		}),
 	}
 }
 
-func (a *GitHubApp) getAppToken() (string, error) {
+func (a *GitHubApp) getAppToken(ctx context.Context) (string, error) {
 	if a.appToken == "" || time.Until(a.appTokenExpiry) < 2*time.Minute {
 		token, expiry, err := a.issueAppToken(time.Now())
 		if err != nil {
@@ -51,6 +55,13 @@ func (a *GitHubApp) getAppToken() (string, error) {
 		}
 		a.appToken = token
 		a.appTokenExpiry = expiry
+
+		log := ctxlog.FromContext(ctx)
+		log.InfoContext(ctx,
+			"Issued new GitHub App token",
+			slog.String("client", "github"),
+			slog.Time("expiry", expiry),
+		)
 	}
 
 	return a.appToken, nil
@@ -91,7 +102,7 @@ func (a *GitHubApp) issueAppToken(now time.Time) (string, time.Time, error) {
 }
 
 func (a *GitHubApp) getInstallationToken(ctx context.Context, installation InstallationID) (string, error) {
-	t, exist := a.mapInstallationTokens[installation]
+	t, exist := a.installationTokens[installation]
 
 	if !exist || time.Until(t.expiry) < 2*time.Minute {
 		token, expiry, err := a.refreshInstallationToken(ctx, installation)
@@ -100,22 +111,24 @@ func (a *GitHubApp) getInstallationToken(ctx context.Context, installation Insta
 		}
 		t.token = token
 		t.expiry = expiry
-		a.mapInstallationTokens[installation] = t
+		a.installationTokens[installation] = t
 	}
 
 	return t.token, nil
 }
 
-func (a *GitHubApp) refreshInstallationToken(ctx context.Context, installation InstallationID) (string, time.Time, error) {
+func (a *GitHubApp) refreshInstallationToken(
+	ctx context.Context,
+	installation InstallationID,
+) (string, time.Time, error) {
 	// Create request
 	url := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", installation)
-	fmt.Println("Refreshing installation token via URL:", url)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, nil)
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	appToken, err := a.getAppToken()
+	appToken, err := a.getAppToken(ctx)
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("failed to issue app token: %w", err)
 	}
@@ -143,6 +156,14 @@ func (a *GitHubApp) refreshInstallationToken(ctx context.Context, installation I
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", time.Time{}, fmt.Errorf("failed to parse response: %w", err)
 	}
+
+	log := ctxlog.FromContext(ctx)
+	log.InfoContext(ctx,
+		"Issued new GitHub Installation token",
+		slog.String("client", "github"),
+		slog.Uint64("installation_id", uint64(installation)),
+		slog.Time("expiry", result.ExpiresAt),
+	)
 
 	return result.Token, result.ExpiresAt, nil
 }

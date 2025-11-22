@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ctbur/ci-server/v2/internal/github"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -66,6 +67,7 @@ type BuildMeta struct {
 
 func (db DBStore) CreateBuild(
 	ctx context.Context,
+	installationID github.InstallationID,
 	repoOwner, repoName string,
 	build BuildMeta,
 	ts time.Time,
@@ -78,16 +80,17 @@ func (db DBStore) CreateBuild(
 
 	// TODO: implement serializable retry logic
 
-	// Increment build counter
+	// Set installation ID and increment build counter
 	var repoID uint64
 	var buildNumber uint64
 
 	err = tx.QueryRow(
 		ctx,
 		`UPDATE repos
-		SET build_counter = build_counter + 1
-		WHERE owner = $1 AND name = $2
+		SET installation_id = $1, build_counter = build_counter + 1
+		WHERE owner = $2 AND name = $3
 		RETURNING id, build_counter`,
+		installationID,
 		repoOwner,
 		repoName,
 	).Scan(&repoID, &buildNumber)
@@ -355,11 +358,12 @@ func (db DBStore) CountBuilds(ctx context.Context) (uint64, error) {
 }
 
 type PendingBuild struct {
-	ID        uint64
-	CacheID   *uint64
-	Repo      Repo
-	Ref       string
-	CommitSHA string
+	ID             uint64
+	CacheID        *uint64
+	InstallationID github.InstallationID
+	Repo           Repo
+	Ref            string
+	CommitSHA      string
 }
 
 func (db DBStore) GetPendingBuilds(ctx context.Context) ([]PendingBuild, error) {
@@ -369,6 +373,7 @@ func (db DBStore) GetPendingBuilds(ctx context.Context) ([]PendingBuild, error) 
 			b.id,
 			b.ref,
 			b.commit_sha,
+			r.installation_id,
 			r.owner,
 			r.name,
 			r.cache_id
@@ -390,6 +395,7 @@ func (db DBStore) GetPendingBuilds(ctx context.Context) ([]PendingBuild, error) 
 				&b.ID,
 				&b.Ref,
 				&b.CommitSHA,
+				&b.InstallationID,
 				&b.Repo.Owner,
 				&b.Repo.Name,
 				&b.CacheID,
@@ -399,12 +405,13 @@ func (db DBStore) GetPendingBuilds(ctx context.Context) ([]PendingBuild, error) 
 }
 
 type Builder struct {
-	PID       int
-	BuildID   uint64
-	Repo      Repo
-	CommitSHA string
-	Ref       string
-	CacheID   *uint64
+	PID            int
+	BuildID        uint64
+	InstallationID github.InstallationID
+	Repo           Repo
+	CommitSHA      string
+	Ref            string
+	CacheID        *uint64
 }
 
 func (db DBStore) ListBuilders(ctx context.Context) ([]Builder, error) {
@@ -413,6 +420,7 @@ func (db DBStore) ListBuilders(ctx context.Context) ([]Builder, error) {
 		`SELECT
 			br.pid,
 			b.id,
+			r.installation_id,
 			r.owner,
 			r.name,
 			b.commit_sha,
@@ -435,6 +443,7 @@ func (db DBStore) ListBuilders(ctx context.Context) ([]Builder, error) {
 			err := row.Scan(
 				&b.PID,
 				&b.BuildID,
+				&b.InstallationID,
 				&b.Repo.Owner,
 				&b.Repo.Name,
 				&b.CommitSHA,
