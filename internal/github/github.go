@@ -54,7 +54,7 @@ func (a *GitHubApp) getAppToken() (string, error) {
 
 func (a *GitHubApp) issueAppToken(now time.Time) (string, time.Time, error) {
 	expiresAt := now.Add(9 * time.Minute)
-	header := `{"typ":t"JWT","alg":"RS256"}`
+	header := `{"typ":"JWT","alg":"RS256"}`
 	claims := fmt.Sprintf(
 		`{"iat":%d,"exp":%d,"iss":%d}`,
 		now.Add(-time.Minute).Unix(), // issued 1 minute in the past to allow for clock drift
