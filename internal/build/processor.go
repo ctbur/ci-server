@@ -13,13 +13,12 @@ import (
 )
 
 type Processor struct {
-	HostURL      string
-	Repos        config.RepoConfigs
-	Builds       buildStore
-	Builder      builderController
-	FS           processorFSStore
-	GitHub       commitStatusCreator
-	Installation github.InstallationID
+	HostURL string
+	Repos   config.RepoConfigs
+	Builds  buildStore
+	Builder builderController
+	FS      processorFSStore
+	GitHub  commitStatusCreator
 }
 
 type buildStore interface {
@@ -43,31 +42,29 @@ type processorFSStore interface {
 type commitStatusCreator interface {
 	CreateCommitStatus(
 		ctx context.Context,
-		installation github.InstallationID,
+		installationID github.InstallationID,
 		owner, repo, sha string,
 		state github.CommitState,
 		description string,
 		targetURL string,
 		contextStr string,
 	) error
+	GetInstallationID(
+		ctx context.Context,
+		owner, repo string,
+	) (github.InstallationID, error)
 }
 
 func NewProcessor(
 	cfg *config.Config, fs *store.FSStore, db *store.DBStore, gh *github.GitHubApp,
 ) *Processor {
-	// Ensure that interface is nil when gh is nil
-	var pgh commitStatusCreator
-	if gh != nil {
-		pgh = gh
-	}
-
 	return &Processor{
 		HostURL: cfg.HostURL,
 		Repos:   cfg.Repos,
 		Builds:  db,
 		FS:      fs,
 		Builder: &BuilderController{FS: fs},
-		GitHub:  pgh,
+		GitHub:  gh,
 	}
 }
 
@@ -135,34 +132,41 @@ func (p *Processor) process(ctx context.Context) {
 			continue
 		}
 
-		if p.GitHub != nil {
-			commitState := github.CommitStateError
-			switch result {
-			case store.BuildResultSuccess:
-				commitState = github.CommitStateSuccess
-			case store.BuildResultFailed, store.BuildResultCanceled, store.BuildResultTimeout:
-				commitState = github.CommitStateFailure
-			}
-			err = p.GitHub.CreateCommitStatus(
+		installationID, err := p.GitHub.GetInstallationID(ctx, br.Repo.Owner, br.Repo.Name)
+		if err != nil {
+			log.ErrorContext(
 				ctx,
-				p.Installation,
-				br.Repo.Owner,
-				br.Repo.Name,
-				br.CommitSHA,
-				commitState,
-				"Build finished",
-				fmt.Sprintf("%s/builds/%d", p.HostURL, br.BuildID),
-				"CI",
+				"failed to get GitHub installation ID",
+				slog.Uint64("build_id", br.BuildID),
+				slog.Any("error", err),
 			)
-			if err != nil {
-				log.ErrorContext(
-					ctx,
-					"failed to create finished commit status",
-					slog.Uint64("installation_id", uint64(p.Installation)),
-					slog.Uint64("build_id", br.BuildID),
-					slog.Any("error", err),
-				)
-			}
+			continue
+		}
+		commitState := github.CommitStateError
+		switch result {
+		case store.BuildResultSuccess:
+			commitState = github.CommitStateSuccess
+		case store.BuildResultFailed, store.BuildResultCanceled, store.BuildResultTimeout:
+			commitState = github.CommitStateFailure
+		}
+		err = p.GitHub.CreateCommitStatus(
+			ctx,
+			installationID,
+			br.Repo.Owner,
+			br.Repo.Name,
+			br.CommitSHA,
+			commitState,
+			"Build finished",
+			fmt.Sprintf("%s/builds/%d", p.HostURL, br.BuildID),
+			"CI",
+		)
+		if err != nil {
+			log.ErrorContext(
+				ctx,
+				"failed to create finished commit status",
+				slog.Uint64("build_id", br.BuildID),
+				slog.Any("error", err),
+			)
 		}
 
 		log.InfoContext(
@@ -220,27 +224,34 @@ func (p *Processor) process(ctx context.Context) {
 			)
 		}
 
-		if p.GitHub != nil {
-			err = p.GitHub.CreateCommitStatus(
+		installationID, err := p.GitHub.GetInstallationID(ctx, b.Repo.Owner, b.Repo.Name)
+		if err != nil {
+			log.ErrorContext(
 				ctx,
-				p.Installation,
-				b.Repo.Owner,
-				b.Repo.Name,
-				b.CommitSHA,
-				github.CommitStatePending,
-				"Build started",
-				fmt.Sprintf("%s/builds/%d", p.HostURL, b.ID),
-				"CI",
+				"failed to get GitHub installation ID",
+				slog.Uint64("build_id", b.ID),
+				slog.Any("error", err),
 			)
-			if err != nil {
-				log.ErrorContext(
-					ctx,
-					"failed to create pending commit status",
-					slog.Uint64("installation_id", uint64(p.Installation)),
-					slog.Uint64("build_id", b.ID),
-					slog.Any("error", err),
-				)
-			}
+			continue
+		}
+		err = p.GitHub.CreateCommitStatus(
+			ctx,
+			installationID,
+			b.Repo.Owner,
+			b.Repo.Name,
+			b.CommitSHA,
+			github.CommitStatePending,
+			"Build started",
+			fmt.Sprintf("%s/builds/%d", p.HostURL, b.ID),
+			"CI",
+		)
+		if err != nil {
+			log.ErrorContext(
+				ctx,
+				"failed to create pending commit status",
+				slog.Uint64("build_id", b.ID),
+				slog.Any("error", err),
+			)
 		}
 
 		log.InfoContext(

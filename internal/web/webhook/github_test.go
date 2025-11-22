@@ -218,7 +218,7 @@ func TestGitHubWebhook(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			// Given
 			cfg := config.Config{
-				GitHub: &config.GitHubConfig{
+				GitHub: config.GitHubConfig{
 					AuthorizedInstallationIDs: tc.authorizedInstallationIDs,
 					WebhookSecret:             tc.webhookSecret,
 				},
