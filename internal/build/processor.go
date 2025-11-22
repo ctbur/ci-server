@@ -57,10 +57,8 @@ func NewProcessor(
 ) *Processor {
 	// Ensure that interface is nil when gh is nil
 	var pgh commitStatusCreator
-	var installation github.InstallationID
 	if gh != nil {
 		pgh = gh
-		installation = github.InstallationID(cfg.GitHub.InstallationID)
 	}
 
 	return &Processor{
@@ -70,8 +68,6 @@ func NewProcessor(
 		FS:      fs,
 		Builder: &BuilderController{FS: fs},
 		GitHub:  pgh,
-		// TODO: support multiple installations
-		Installation: installation,
 	}
 }
 
@@ -91,6 +87,7 @@ func (p *Processor) Run(ctx context.Context) {
 
 func (p *Processor) process(ctx context.Context) {
 	log := ctxlog.FromContext(ctx)
+	log = log.With(slog.String("component", "build_processor"))
 
 	// Handle finished builds
 	runningBuilders, err := p.Builds.ListBuilders(ctx)

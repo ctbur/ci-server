@@ -15,9 +15,9 @@ type Config struct {
 }
 
 type GitHubConfig struct {
-	AppID          uint64 `toml:"app_id"`
-	InstallationID uint64 `toml:"installation_id"`
-	PrivateKeyPath string `toml:"private_key_path"`
+	AppID                     uint64   `toml:"app_id"`
+	AuthorizedInstallationIDs []uint64 `toml:"authorized_installation_ids"`
+	PrivateKeyPath            string   `toml:"private_key_path"`
 	// Name mapped to "encrypted_webhook_secret" - we decrypt it as part of loading the config
 	WebhookSecret string `toml:"encrypted_webhook_secret,omitempty"`
 }
