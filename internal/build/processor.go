@@ -18,7 +18,7 @@ type Processor struct {
 	Builds  buildStore
 	Builder builderController
 	FS      processorFSStore
-	GitHub  commitStatusCreator
+	GitHub  githubClient
 }
 
 type buildStore interface {
@@ -30,7 +30,7 @@ type buildStore interface {
 }
 
 type builderController interface {
-	Start(repo config.RepoConfig, build store.PendingBuild, runDeploy bool) (int, error)
+	Start(repo config.RepoConfig, accessToken string, build store.PendingBuild, runDeploy bool) (int, error)
 	IsRunning(pid int, buildID uint64) bool
 }
 
@@ -39,7 +39,11 @@ type processorFSStore interface {
 	RetainBuildDirs(retainedIDs []uint64) ([]uint64, error)
 }
 
-type commitStatusCreator interface {
+type githubClient interface {
+	GetInstallationToken(
+		ctx context.Context,
+		installationID github.InstallationID,
+	) (string, error)
 	CreateCommitStatus(
 		ctx context.Context,
 		installationID github.InstallationID,
@@ -186,9 +190,22 @@ func (p *Processor) process(ctx context.Context) {
 
 		// TODO: limit builds by number or resource usage
 
+		repoAccessToken, err := p.GitHub.GetInstallationToken(
+			ctx, b.InstallationID,
+		)
+		if err != nil {
+			log.ErrorContext(
+				ctx,
+				"failed to get installation token",
+				slog.Uint64("build_id", b.ID),
+				slog.Any("error", err),
+			)
+			continue
+		}
+
 		// Don't run deploy if not on default branch
 		runDeploy := b.Ref == fmt.Sprintf("refs/heads/%s", repo.DefaultBranch)
-		pid, err := p.Builder.Start(*repo, b, runDeploy)
+		pid, err := p.Builder.Start(*repo, repoAccessToken, b, runDeploy)
 		if err != nil {
 			log.ErrorContext(
 				ctx,

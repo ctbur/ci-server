@@ -15,7 +15,7 @@ import (
 type Builder struct {
 	FS               builderFSStore
 	Git              git
-	RepoURLFormatter func(owner, name string) string
+	RepoURLFormatter func(owner, name, accessToken string) string
 	Cmd              cmdRunner
 }
 
@@ -32,8 +32,12 @@ type cmdRunner interface {
 	Run(buildID uint64, absSandboxDir, workDir string, cmd []string, env []string) (int, error)
 }
 
-func githubRepoURL(owner, name string) string {
-	return fmt.Sprintf("https://github.com/%s/%s.git", owner, name)
+func githubRepoURL(owner, name, accessToken string) string {
+	authPrefix := ""
+	if accessToken != "" {
+		authPrefix = fmt.Sprintf("x-access-token:%s@", accessToken)
+	}
+	return fmt.Sprintf("https://%sgithub.com/%s/%s.git", authPrefix, owner, name)
 }
 
 func RunBuilder() error {
@@ -90,7 +94,7 @@ func (br *Builder) runBuild(log *slog.Logger, p BuilderParams) (int, error) {
 
 	// Checkout
 	absCheckoutDir := path.Join(absBuildDir, checkoutDir)
-	repoURL := br.RepoURLFormatter(p.RepoOwner, p.RepoName)
+	repoURL := br.RepoURLFormatter(p.RepoOwner, p.RepoName, p.RepoAccessToken)
 	err = br.Git.Checkout(repoURL, p.CommitSHA, absCheckoutDir)
 	if err != nil {
 		return 0, err

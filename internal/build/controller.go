@@ -21,6 +21,7 @@ type BuilderParams struct {
 	DataDir             string
 	BuildID             uint64
 	CacheID             *uint64
+	RepoAccessToken     string
 	RepoOwner, RepoName string
 	CommitSHA           string
 	PathEnvVar          string
@@ -34,20 +35,24 @@ type BuilderParams struct {
 // Create a new builder process by starting the same executable as the current
 // process, but with the "builder" argument.
 func (c *BuilderController) Start(
-	repo config.RepoConfig, build store.PendingBuild, runDeploy bool,
+	repo config.RepoConfig,
+	repoAccessToken string,
+	build store.PendingBuild,
+	runDeploy bool,
 ) (int, error) {
 
 	params := BuilderParams{
-		DataDir:      c.FS.RootDir,
-		BuildID:      build.ID,
-		CacheID:      build.CacheID,
-		RepoOwner:    repo.Owner,
-		RepoName:     repo.Name,
-		CommitSHA:    build.CommitSHA,
-		PathEnvVar:   os.Getenv("PATH"),
-		EnvVars:      repo.EnvVars,
-		BuildCmd:     repo.BuildCmd,
-		BuildSecrets: repo.BuildSecrets,
+		DataDir:         c.FS.RootDir,
+		BuildID:         build.ID,
+		CacheID:         build.CacheID,
+		RepoAccessToken: repoAccessToken,
+		RepoOwner:       repo.Owner,
+		RepoName:        repo.Name,
+		CommitSHA:       build.CommitSHA,
+		PathEnvVar:      os.Getenv("PATH"),
+		EnvVars:         repo.EnvVars,
+		BuildCmd:        repo.BuildCmd,
+		BuildSecrets:    repo.BuildSecrets,
 	}
 
 	if runDeploy {
