@@ -107,6 +107,7 @@ func (a *GitHubApp) getInstallationToken(ctx context.Context, installation Insta
 func (a *GitHubApp) refreshInstallationToken(ctx context.Context, installation InstallationID) (string, time.Time, error) {
 	// Create request
 	url := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", installation)
+	fmt.Println("Refreshing installation token via URL:", url)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, nil)
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("failed to create request: %w", err)
