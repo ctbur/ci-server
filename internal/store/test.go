@@ -167,7 +167,7 @@ func StartDevDatabase(
 // Starts a database with a temporary data dir and arbitrary port
 func StartTestDatabase(
 	ctx context.Context,
-) (pool *pgxpool.Pool, cleanup func(), err error) {
+) (*pgxpool.Pool, func(), error) {
 	testDataDir, err := os.MkdirTemp("", "pgdata_test_")
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create temp data dir: %w", err)
@@ -178,7 +178,7 @@ func StartTestDatabase(
 		return nil, nil, fmt.Errorf("failed to get free port: %w", err)
 	}
 
-	pool, cleanup, err = StartDevDatabase(ctx, testDataDir, port)
+	pool, cleanup, err := StartDevDatabase(ctx, testDataDir, port)
 	if err != nil {
 		_ = os.RemoveAll(testDataDir)
 		return nil, nil, fmt.Errorf("failed to start test database: %w", err)
