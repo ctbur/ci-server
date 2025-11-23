@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/ctbur/ci-server/v2/internal/config"
+	"github.com/ctbur/ci-server/v2/internal/ctxlog"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -16,7 +17,9 @@ import (
 var migrationsFS embed.FS
 var migrationsDir = "migrations"
 
-func ApplyMigrations(log *slog.Logger, ctx context.Context, pool *pgxpool.Pool) error {
+func ApplyMigrations(ctx context.Context, pool *pgxpool.Pool) error {
+	log := ctxlog.FromContext(ctx).With(slog.String("component", "migrations"))
+
 	conn, err := pool.Acquire(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to aqcuire connection to run migrations: %v", err)
