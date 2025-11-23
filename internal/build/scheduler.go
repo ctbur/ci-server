@@ -212,6 +212,7 @@ func (p *Scheduler) startBuild(
 	repoAccessToken, err := p.GitHub.GetInstallationToken(ctx, b.InstallationID)
 	if err != nil {
 		log.ErrorContext(ctx, "Failed to get installation token", slog.Any("error", err))
+		return
 	}
 
 	// Don't run deploy if not on default branch

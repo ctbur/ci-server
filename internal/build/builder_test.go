@@ -59,13 +59,13 @@ func createDummyGitRepo(targetDir string, files map[string]string) (string, erro
 	return strings.TrimSpace(shaBytes.String()), nil
 }
 
-func (r *MockCmdRunner) Run(
+func (r *mockCmdRunner) Run(
 	buildID uint64,
 	absSandboxDir, workDir string,
 	cmd []string,
 	env []string,
 ) (int, error) {
-	r.Calls = append(r.Calls, CmdRunnerCall{
+	r.Calls = append(r.Calls, cmdRunnerCall{
 		buildID, absSandboxDir, workDir, cmd, env,
 	})
 	res := r.MockResults[0]
@@ -216,33 +216,35 @@ func checkEnv(t *testing.T, envData []byte, contains []string, notContains []str
 	}
 }
 
-func NewMockFSStore() MockFSStore {
-	return MockFSStore{
-		BuildDirs: make(map[uint64]MockBuildDir),
+func newMockFSStore() mockBuilderFSStore {
+	return mockBuilderFSStore{
+		BuildDirs: make(map[uint64]mockBuildDir),
 		ExitCodes: make(map[uint64]int),
 	}
 }
 
-type MockFSStore struct {
-	BuildDirs map[uint64]MockBuildDir
+type mockBuilderFSStore struct {
+	BuildDirs map[uint64]mockBuildDir
 	ExitCodes map[uint64]int
 }
 
-type MockBuildDir struct {
+type mockBuildDir struct {
 	CacheID     *uint64
 	CheckoutDir string
 }
 
-func (d *MockFSStore) CreateBuildDir(buildID uint64, cacheID *uint64, checkoutDir string) (string, error) {
+func (d *mockBuilderFSStore) CreateBuildDir(
+	buildID uint64, cacheID *uint64, checkoutDir string,
+) (string, error) {
 	if _, exists := d.BuildDirs[buildID]; exists {
 		return "", errors.New("build dir exists")
 	}
 
-	d.BuildDirs[buildID] = MockBuildDir{CacheID: cacheID, CheckoutDir: checkoutDir}
+	d.BuildDirs[buildID] = mockBuildDir{CacheID: cacheID, CheckoutDir: checkoutDir}
 	return fmt.Sprintf("/mockdir/%d", buildID), nil
 }
 
-func (d *MockFSStore) WriteExitCode(buildID uint64, exitCode int) error {
+func (d *mockBuilderFSStore) WriteExitCode(buildID uint64, exitCode int) error {
 	if _, exists := d.ExitCodes[buildID]; exists {
 		return errors.New("exit code already written")
 	}
@@ -251,30 +253,30 @@ func (d *MockFSStore) WriteExitCode(buildID uint64, exitCode int) error {
 	return nil
 }
 
-type MockCmdRunner struct {
-	MockResults []MockCmdResult
-	Calls       []CmdRunnerCall
+type mockCmdRunner struct {
+	MockResults []mockCmdResult
+	Calls       []cmdRunnerCall
 }
 
-type MockCmdResult struct {
+type mockCmdResult struct {
 	exitCode int
 	err      error
 }
 
-type CmdRunnerCall struct {
+type cmdRunnerCall struct {
 	buildID                uint64
 	absSandboxDir, workDir string
 	cmd                    []string
 	env                    []string
 }
 
-type MockGit struct {
+type mockGit struct {
 	RepoURL   string
 	CommitSHA string
 	TargetDir string
 }
 
-func (g *MockGit) Checkout(repoURL, commitSHA, targetDir string) error {
+func (g *mockGit) Checkout(repoURL, commitSHA, targetDir string) error {
 	g.RepoURL = repoURL
 	g.CommitSHA = commitSHA
 	g.TargetDir = targetDir
@@ -289,7 +291,7 @@ func TestBuilder(t *testing.T) {
 		cacheID      *uint64
 		buildCmd     []string
 		deployCmd    []string
-		cmdResults   []MockCmdResult
+		cmdResults   []mockCmdResult
 		wantExitCode int
 		shouldDeploy bool
 	}{
@@ -298,7 +300,7 @@ func TestBuilder(t *testing.T) {
 			buildID:  101,
 			cacheID:  nil,
 			buildCmd: []string{"make", "lint", "test"},
-			cmdResults: []MockCmdResult{
+			cmdResults: []mockCmdResult{
 				{exitCode: 0, err: nil},
 			},
 			wantExitCode: 0,
@@ -309,7 +311,7 @@ func TestBuilder(t *testing.T) {
 			buildID:  101,
 			cacheID:  &cacheID,
 			buildCmd: []string{"make", "lint", "test"},
-			cmdResults: []MockCmdResult{
+			cmdResults: []mockCmdResult{
 				{exitCode: 0, err: nil},
 			},
 			wantExitCode: 0,
@@ -320,7 +322,7 @@ func TestBuilder(t *testing.T) {
 			buildID:  101,
 			cacheID:  &cacheID,
 			buildCmd: []string{"make", "lint", "test"},
-			cmdResults: []MockCmdResult{
+			cmdResults: []mockCmdResult{
 				{exitCode: 5, err: nil},
 			},
 			wantExitCode: 5,
@@ -332,7 +334,7 @@ func TestBuilder(t *testing.T) {
 			cacheID:   &cacheID,
 			buildCmd:  []string{"make", "lint", "test"},
 			deployCmd: []string{"make", "install"},
-			cmdResults: []MockCmdResult{
+			cmdResults: []mockCmdResult{
 				{exitCode: 0, err: nil},
 				{exitCode: 0, err: nil},
 			},
@@ -345,7 +347,7 @@ func TestBuilder(t *testing.T) {
 			cacheID:   &cacheID,
 			buildCmd:  []string{"make", "lint", "test"},
 			deployCmd: []string{"make", "install"},
-			cmdResults: []MockCmdResult{
+			cmdResults: []mockCmdResult{
 				{exitCode: 1, err: nil},
 				{exitCode: 2, err: nil},
 			},
@@ -358,7 +360,7 @@ func TestBuilder(t *testing.T) {
 			cacheID:   &cacheID,
 			buildCmd:  []string{"make", "lint", "test"},
 			deployCmd: []string{"make", "install"},
-			cmdResults: []MockCmdResult{
+			cmdResults: []mockCmdResult{
 				{exitCode: 0, err: nil},
 				{exitCode: 3, err: nil},
 			},
@@ -394,9 +396,9 @@ func TestBuilder(t *testing.T) {
 			}
 
 			// Run builder
-			fsStore := NewMockFSStore()
-			git := MockGit{}
-			cmdRunner := MockCmdRunner{
+			fsStore := newMockFSStore()
+			git := mockGit{}
+			cmdRunner := mockCmdRunner{
 				MockResults: tc.cmdResults,
 			}
 			br := Builder{
