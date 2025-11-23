@@ -154,8 +154,8 @@ func runServer() error {
 		github.ApplicationID(cfg.GitHub.AppID),
 	)
 
-	processor := build.NewProcessor(cfg, &fs, &db, githubApp)
-	go processor.Run(ctx)
+	scheduler := build.NewScheduler(cfg, &fs, &db, githubApp)
+	go scheduler.Run(ctx)
 
 	err = web.RunServer(ctx, 8000, cfg, userAuth, &db, &fs)
 	if err != nil {
