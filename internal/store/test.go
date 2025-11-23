@@ -27,7 +27,7 @@ func initDatabase(dataDir string) error {
 	}
 	_, err = pwFile.WriteString(testPassword)
 	if err != nil {
-		pwFile.Close()
+		_ = pwFile.Close()
 		return fmt.Errorf("failed to write password file: %w", err)
 	}
 	_ = pwFile.Close()
@@ -39,7 +39,7 @@ func initDatabase(dataDir string) error {
 		"--encoding=UTF8",
 		"--auth=scram-sha-256",
 		"--username", testUser,
-		"--pwfile", pwFile.Name())
+		"--pwfile", pwFile.Name()) // #nosec G204
 	if out, err := initCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("initdb failed: %w\n%s", err, out)
 	}
@@ -71,9 +71,9 @@ func startDatabase(dataDir string, port int) error {
 	opts := fmt.Sprintf("-p %d -k \"\"", port)
 	// Use -l to log to a file instead of stdout, preventing pipe hangs
 	logFile := path.Join(dataDir, "postgresql.log")
-	cmd := exec.Command("pg_ctl", "start", "-w", "-D", dataDir, "-o", opts, "-l", logFile)
+	cmd := exec.Command("pg_ctl", "start", "-w", "-D", dataDir, "-o", opts, "-l", logFile) // #nosec G204
 	if err := cmd.Run(); err != nil {
-		logContent, _ := os.ReadFile(logFile)
+		logContent, _ := os.ReadFile(logFile) // #nosec G304
 		return fmt.Errorf("pg_ctl start failed: %w\n%s", err, logContent)
 	}
 	return nil
@@ -180,19 +180,19 @@ func StartTestDatabase(
 
 	pool, cleanup, err = StartDevDatabase(ctx, testDataDir, port)
 	if err != nil {
-		os.RemoveAll(testDataDir)
+		_ = os.RemoveAll(testDataDir)
 		return nil, nil, fmt.Errorf("failed to start test database: %w", err)
 	}
 
 	err = ApplyMigrations(ctx, pool)
 	if err != nil {
 		cleanup()
-		os.RemoveAll(testDataDir)
+		_ = os.RemoveAll(testDataDir)
 		return nil, nil, fmt.Errorf("failed to apply migrations: %w", err)
 	}
 
 	return pool, func() {
 		cleanup()
-		os.RemoveAll(testDataDir)
+		_ = os.RemoveAll(testDataDir)
 	}, nil
 }
