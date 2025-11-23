@@ -12,7 +12,7 @@ import (
 func TestBuildStore(t *testing.T) {
 	ctx := context.Background()
 
-	err, pool, cleanup := StartTestDatabase(t, ctx, "../../")
+	pool, cleanup, err := StartTestDatabase(ctx)
 	if err != nil {
 		t.Fatalf("Failed to set up database: %v", err)
 	}

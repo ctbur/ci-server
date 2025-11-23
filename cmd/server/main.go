@@ -18,7 +18,6 @@ import (
 	"github.com/ctbur/ci-server/v2/internal/store"
 	"github.com/ctbur/ci-server/v2/internal/web"
 	"github.com/ctbur/ci-server/v2/internal/web/auth"
-	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -96,30 +95,31 @@ func runServer() error {
 	}
 
 	// Connect to database
-	var postgresURL string
+	var pool *pgxpool.Pool
 	if cfg.DevMode {
-		err, embeddedPostgresURL, cleanup := startDevDatabase()
+		var cleanup func()
+		pool, cleanup, err = store.StartDevDatabase(ctx, "./.data/database", 5432)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to start dev database: %v", err)
 		}
-		postgresURL = embeddedPostgresURL
 		defer cleanup()
 		slog.Info("Embedded Postgres started")
 	} else {
-		postgresURL = os.Getenv("CI_SERVER_POSTGRES_URL")
+		postgresURL := os.Getenv("CI_SERVER_POSTGRES_URL")
 		if postgresURL == "" {
 			return fmt.Errorf("CI_SERVER_POSTGRES_URL not set")
 		}
 		slog.Info("Starting in production mode")
+
+		pool, err = pgxpool.New(ctx, postgresURL)
+		if err != nil {
+			return fmt.Errorf("failed to connect to database: %v", err)
+		}
+		defer pool.Close()
+
 	}
 
-	pool, err := pgxpool.New(ctx, postgresURL)
-	if err != nil {
-		return fmt.Errorf("failed to connect to database: %v", err)
-	}
-	defer pool.Close()
-
-	err = store.ApplyMigrations(slog.Default(), ctx, pool)
+	err = store.ApplyMigrations(ctx, pool)
 	if err != nil {
 		return err
 	}
@@ -163,30 +163,4 @@ func runServer() error {
 	}
 
 	return nil
-}
-
-func startDevDatabase() (error, string, func()) {
-	postgres := embeddedpostgres.NewDatabase(
-		embeddedpostgres.DefaultConfig().
-			Username("ci-server").
-			Password("123456").
-			Database("ci").
-			CachePath("./.data/postgres/").
-			RuntimePath("./.data/postgres/extracted").
-			// Configures data to be persistent because DataPath is outside RuntimePath
-			DataPath("./.data/postgres/data").
-			BinariesPath("./.data/postgres/extracted"),
-	)
-	err := postgres.Start()
-	if err != nil {
-		return fmt.Errorf("failed to start embedded Postgres: %v\n", err), "", nil
-	}
-	return nil, "postgresql://ci-server:123456@localhost:5432/ci", func() {
-		err := postgres.Stop()
-		if err != nil {
-			slog.Error("failed to stop embedded Postgres", slog.Any("error", err))
-			return
-		}
-		slog.Info("embedded Postgres stopped")
-	}
 }
