@@ -83,19 +83,19 @@ func TestBuilderE2E(t *testing.T) {
 	assert.NoError(t, err, "Failed to create temp dir").Fatal()
 	defer os.RemoveAll(testDir)
 
-	// Init DataDir
+	// Init FS store
 	dataDirPath := path.Join(testDir, "data-dir")
-	dataDir := store.FSStore{
+	fsStore := store.FSStore{
 		RootDir: dataDirPath,
 	}
-	err = dataDir.CreateRootDirs()
-	assert.NoError(t, err, "Failed to init DataDir")
+	err = fsStore.CreateRootDirs()
+	assert.NoError(t, err, "Failed to init FS store")
 
 	buildID := uint64(21)
 	cacheID := uint64(11)
 
 	// Create cache
-	cacheDir, err := dataDir.CreateBuildDir(cacheID, nil, "owner/repo")
+	cacheDir, err := fsStore.CreateBuildDir(cacheID, nil, "owner/repo")
 	assert.NoError(t, err, "Failed to create cache dir").Fatal()
 	err = writeToDir(path.Join(cacheDir, "owner/repo"), map[string]string{
 		"A": "cached file",
@@ -144,12 +144,12 @@ func TestBuilderE2E(t *testing.T) {
 	}
 
 	br := Builder{
-		FS:  &dataDir,
+		FS:  &fsStore,
 		Git: &Git{},
 		RepoURLFormatter: func(owner, name, accessToken string) string {
 			return fmt.Sprintf("file://%s", repoDir)
 		},
-		Cmd: &CmdRunner{FS: &dataDir},
+		Cmd: &CmdRunner{FS: &fsStore},
 	}
 
 	log := test.Logger(t)
@@ -157,7 +157,7 @@ func TestBuilderE2E(t *testing.T) {
 	assert.NoError(t, err, "Failed to run builder").Fatal()
 
 	// Check exit code correct
-	exitCode, err := dataDir.ReadAndCleanExitCode(buildID)
+	exitCode, err := fsStore.ReadAndCleanExitCode(buildID)
 	assert.NoError(t, err, "Failed to read exit code")
 	assert.Equal(t, exitCode, 0, "Incorrect exit code written")
 
@@ -216,14 +216,14 @@ func checkEnv(t *testing.T, envData []byte, contains []string, notContains []str
 	}
 }
 
-func NewMockDataDir() MockDataDir {
-	return MockDataDir{
+func NewMockFSStore() MockFSStore {
+	return MockFSStore{
 		BuildDirs: make(map[uint64]MockBuildDir),
 		ExitCodes: make(map[uint64]int),
 	}
 }
 
-type MockDataDir struct {
+type MockFSStore struct {
 	BuildDirs map[uint64]MockBuildDir
 	ExitCodes map[uint64]int
 }
@@ -233,7 +233,7 @@ type MockBuildDir struct {
 	CheckoutDir string
 }
 
-func (d *MockDataDir) CreateBuildDir(buildID uint64, cacheID *uint64, checkoutDir string) (string, error) {
+func (d *MockFSStore) CreateBuildDir(buildID uint64, cacheID *uint64, checkoutDir string) (string, error) {
 	if _, exists := d.BuildDirs[buildID]; exists {
 		return "", errors.New("build dir exists")
 	}
@@ -242,7 +242,7 @@ func (d *MockDataDir) CreateBuildDir(buildID uint64, cacheID *uint64, checkoutDi
 	return fmt.Sprintf("/mockdir/%d", buildID), nil
 }
 
-func (d *MockDataDir) WriteExitCode(buildID uint64, exitCode int) error {
+func (d *MockFSStore) WriteExitCode(buildID uint64, exitCode int) error {
 	if _, exists := d.ExitCodes[buildID]; exists {
 		return errors.New("exit code already written")
 	}
@@ -394,13 +394,13 @@ func TestBuilder(t *testing.T) {
 			}
 
 			// Run builder
-			dataDir := NewMockDataDir()
+			fsStore := NewMockFSStore()
 			git := MockGit{}
 			cmdRunner := MockCmdRunner{
 				MockResults: tc.cmdResults,
 			}
 			br := Builder{
-				FS:               &dataDir,
+				FS:               &fsStore,
 				Git:              &git,
 				RepoURLFormatter: githubRepoURL,
 				Cmd:              &cmdRunner,
@@ -411,9 +411,9 @@ func TestBuilder(t *testing.T) {
 			assert.NoError(t, err, "Failed to run builder")
 
 			// Check data dir
-			assert.Equal(t, dataDir.BuildDirs[tc.buildID].CacheID, tc.cacheID, "Incorrect cache ID")
-			assert.Equal(t, dataDir.BuildDirs[tc.buildID].CheckoutDir, "owner/repo", "Incorrect checkout dir")
-			assert.Equal(t, dataDir.ExitCodes[tc.buildID], tc.wantExitCode, "Incorrect exit code")
+			assert.Equal(t, fsStore.BuildDirs[tc.buildID].CacheID, tc.cacheID, "Incorrect cache ID")
+			assert.Equal(t, fsStore.BuildDirs[tc.buildID].CheckoutDir, "owner/repo", "Incorrect checkout dir")
+			assert.Equal(t, fsStore.ExitCodes[tc.buildID], tc.wantExitCode, "Incorrect exit code")
 
 			// Check git
 			assert.Equal(t, git.RepoURL, "https://github.com/owner/repo.git", "Incorrect repo URL")
