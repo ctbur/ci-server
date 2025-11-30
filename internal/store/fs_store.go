@@ -61,28 +61,28 @@ func (fs *FSStore) ReadAndCleanExitCode(buildID uint64) (int, error) {
 	return int(exitCode), nil
 }
 
-// CreateBuildDir creates directory, which contains another directory under
-// checkoutDir. If the cacheID is given, files from the build dir with the same
-// ID are copied into the directory beforehand.
+func (fs *FSStore) CopyCacheDir(buildID uint64, cacheID uint64) error {
+	buildDir := path.Join(fs.RootDir, "build", strconv.FormatUint(buildID, 10))
+	cacheDir := path.Join(fs.RootDir, "build", strconv.FormatUint(cacheID, 10))
+
+	// copyDirs will create the build dir
+	if err := copyDirs(cacheDir, buildDir); err != nil {
+		return fmt.Errorf(
+			"failed to copy repo cache dir '%s' to build dir '%s': %w",
+			cacheDir, buildDir, err,
+		)
+	}
+	return nil
+}
+
+// InitBuildDir creates a directory, which contains another directory under
+// checkoutDir.
 // It returns the absolute build dir path, or the first error encountered.
-func (fs *FSStore) CreateBuildDir(
-	buildID uint64, cacheID *uint64, checkoutDir string,
-) (string, error) {
+func (fs *FSStore) InitBuildDir(buildID uint64, checkoutDir string) (string, error) {
 	buildDir := path.Join(fs.RootDir, "build", strconv.FormatUint(buildID, 10))
 
-	if cacheID != nil {
-		cacheDir := path.Join(fs.RootDir, "build", strconv.FormatUint(*cacheID, 10))
-		// copyDirs will create the build dir
-		if err := copyDirs(cacheDir, buildDir); err != nil {
-			return "", fmt.Errorf(
-				"failed to copy repo cache dir '%s' to build dir '%s': %w",
-				cacheDir, buildDir, err,
-			)
-		}
-	} else {
-		if err := os.Mkdir(buildDir, 0o700); err != nil {
-			return "", fmt.Errorf("failed to create empty dir: %w", err)
-		}
+	if err := os.Mkdir(buildDir, 0o700); err != nil {
+		return "", fmt.Errorf("failed to create empty dir: %w", err)
 	}
 
 	// Ensure checkout dir exists
