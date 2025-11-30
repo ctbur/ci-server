@@ -20,7 +20,8 @@ type Builder struct {
 }
 
 type builderFSStore interface {
-	CreateBuildDir(buildID uint64, cacheID *uint64, checkoutDir string) (string, error)
+	CopyCacheDir(buildID uint64, cacheID uint64) error
+	InitBuildDir(buildID uint64, checkoutDir string) (string, error)
 	WriteExitCode(buildID uint64, exitCode int) error
 }
 
@@ -80,14 +81,18 @@ func (br *Builder) runBuild(log *slog.Logger, p BuilderParams) (int, error) {
 	// Prepare build dir
 	if p.CacheID != nil {
 		log.Info("Copying cache", slog.Uint64("cache_id", *p.CacheID))
+		err := br.FS.CopyCacheDir(p.BuildID, *p.CacheID)
+		if err != nil {
+			log.Error(
+				"Failed to copy cache, the bild will be significantly slower",
+				slog.Uint64("cache_id", *p.CacheID),
+			)
+		}
 	} else {
 		log.Info("Starting from an empty build dir")
 	}
 	checkoutDir := path.Join(p.RepoOwner, p.RepoName)
-	absBuildDir, err := br.FS.CreateBuildDir(
-		p.BuildID, p.CacheID,
-		checkoutDir,
-	)
+	absBuildDir, err := br.FS.InitBuildDir(p.BuildID, checkoutDir)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create build dir: %w", err)
 	}

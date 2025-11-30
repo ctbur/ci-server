@@ -95,7 +95,7 @@ func TestBuilderE2E(t *testing.T) {
 	cacheID := uint64(11)
 
 	// Create cache
-	cacheDir, err := fsStore.CreateBuildDir(cacheID, nil, "owner/repo")
+	cacheDir, err := fsStore.InitBuildDir(cacheID, "owner/repo")
 	assert.NoError(t, err, "Failed to create cache dir").Fatal()
 	err = writeToDir(path.Join(cacheDir, "owner/repo"), map[string]string{
 		"A": "cached file",
@@ -223,6 +223,8 @@ func newMockFSStore() mockBuilderFSStore {
 	}
 }
 
+var _ builderFSStore = &mockBuilderFSStore{}
+
 type mockBuilderFSStore struct {
 	BuildDirs map[uint64]mockBuildDir
 	ExitCodes map[uint64]int
@@ -233,14 +235,20 @@ type mockBuildDir struct {
 	CheckoutDir string
 }
 
-func (d *mockBuilderFSStore) CreateBuildDir(
-	buildID uint64, cacheID *uint64, checkoutDir string,
-) (string, error) {
-	if _, exists := d.BuildDirs[buildID]; exists {
-		return "", errors.New("build dir exists")
-	}
+func (d *mockBuilderFSStore) CopyCacheDir(buildID uint64, cacheID uint64) error {
+	buildDir, _ := d.BuildDirs[buildID]
+	buildDir.CacheID = &cacheID
+	d.BuildDirs[buildID] = buildDir
+	return nil
+}
 
-	d.BuildDirs[buildID] = mockBuildDir{CacheID: cacheID, CheckoutDir: checkoutDir}
+func (d *mockBuilderFSStore) InitBuildDir(
+	buildID uint64, checkoutDir string,
+) (string, error) {
+	buildDir, _ := d.BuildDirs[buildID]
+	buildDir.CheckoutDir = checkoutDir
+	d.BuildDirs[buildID] = buildDir
+
 	return fmt.Sprintf("/mockdir/%d", buildID), nil
 }
 
@@ -413,7 +421,7 @@ func TestBuilder(t *testing.T) {
 			assert.NoError(t, err, "Failed to run builder")
 
 			// Check data dir
-			assert.Equal(t, fsStore.BuildDirs[tc.buildID].CacheID, tc.cacheID, "Incorrect cache ID")
+			assert.DeepEqual(t, fsStore.BuildDirs[tc.buildID].CacheID, tc.cacheID, "Incorrect cache ID")
 			assert.Equal(t, fsStore.BuildDirs[tc.buildID].CheckoutDir, "owner/repo", "Incorrect checkout dir")
 			assert.Equal(t, fsStore.ExitCodes[tc.buildID], tc.wantExitCode, "Incorrect exit code")
 
