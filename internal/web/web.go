@@ -44,7 +44,13 @@ func handler(
 	uiMux.Handle("GET /hx/builds", ui.HandleBuildListFragment(db, tmpl))
 	uiMux.Handle("GET /builds/{build_id}", ui.HandleBuildDetails(db, fs, tmpl))
 	uiMux.Handle("GET /hx/builds/{build_id}", ui.HandleBuildDetailsFragment(db, fs, tmpl))
-	mux.Handle("/", userAuth.Middleware(uiMux))
+
+	if cfg.DevMode {
+		// Disable auth in dev mode for testing
+		mux.Handle("/", uiMux)
+	} else {
+		mux.Handle("/", userAuth.Middleware(uiMux))
+	}
 
 	omitQueryPaths := []string{"/auth/callback"}
 	return ctxlog.Middleware(mux, omitQueryPaths)

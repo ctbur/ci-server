@@ -72,7 +72,10 @@
             href="?page={{ .PreviousPage }}"
             aria-label="Previous Page"
         >
-            &laquo; Previous
+        <span class="text-icon">
+            {{ icon "arrow-left" }}
+        </span>
+        Previous
         </a>
     {{ end }}
 
@@ -85,7 +88,10 @@
                 href="?page={{ .NextPage }}"
             aria-label="Next Page"
         >
-        Next &raquo;
+        Next
+        <span class="text-icon">
+            {{ icon "arrow-right" }}
+        </span>
         </a>
     {{ end }}
 </nav>
