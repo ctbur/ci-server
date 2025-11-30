@@ -81,7 +81,7 @@ func (fs *FSStore) CopyCacheDir(buildID uint64, cacheID uint64) error {
 func (fs *FSStore) InitBuildDir(buildID uint64, checkoutDir string) (string, error) {
 	buildDir := path.Join(fs.RootDir, "build", strconv.FormatUint(buildID, 10))
 
-	if err := os.Mkdir(buildDir, 0o700); err != nil {
+	if err := os.Mkdir(buildDir, 0o700); err != nil && !os.IsExist(err) {
 		return "", fmt.Errorf("failed to create empty dir: %w", err)
 	}
 

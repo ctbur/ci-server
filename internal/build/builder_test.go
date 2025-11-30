@@ -421,7 +421,7 @@ func TestBuilder(t *testing.T) {
 			assert.NoError(t, err, "Failed to run builder")
 
 			// Check data dir
-			assert.Equal(t, fsStore.BuildDirs[tc.buildID].CacheID, tc.cacheID, "Incorrect cache ID")
+			assert.DeepEqual(t, fsStore.BuildDirs[tc.buildID].CacheID, tc.cacheID, "Incorrect cache ID")
 			assert.Equal(t, fsStore.BuildDirs[tc.buildID].CheckoutDir, "owner/repo", "Incorrect checkout dir")
 			assert.Equal(t, fsStore.ExitCodes[tc.buildID], tc.wantExitCode, "Incorrect exit code")
 
