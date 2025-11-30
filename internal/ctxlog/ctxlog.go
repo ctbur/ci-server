@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -22,14 +24,23 @@ func FromContext(ctx context.Context) *slog.Logger {
 	return logger.(*slog.Logger)
 }
 
-func Middleware(next http.Handler) http.Handler {
+func Middleware(next http.Handler, omitQueryPaths []string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		log := FromContext(ctx)
-		log = log.With(
+
+		logFields := []any{
+			slog.String("remote_addr", r.RemoteAddr),
 			slog.String("method", r.Method),
-			slog.String("request", r.RequestURI),
-		)
+		}
+
+		uriParts := strings.SplitN(r.RequestURI, "?", 2)
+		logFields = append(logFields, slog.String("path", uriParts[0]))
+		if !slices.Contains(omitQueryPaths, uriParts[0]) && len(uriParts) == 2 {
+			logFields = append(logFields, slog.String("query", "?"+uriParts[1]))
+		}
+
+		log = log.With(logFields...)
 
 		ctx = context.WithValue(ctx, loggerKey{}, log)
 		start := time.Now()

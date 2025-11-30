@@ -1,139 +1,225 @@
 package auth
 
 import (
-	"errors"
+	"context"
+	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
+	"time"
 
 	"github.com/ctbur/ci-server/v2/internal/assert"
+	"github.com/ctbur/ci-server/v2/internal/config"
 )
 
-const htpasswd = `
-test1:$2y$05$vyEpG2uWhCB36knMvzIDc.k43J8Hyx84gMwlDKpcWsGH/Qi9QjrXe
+type mockGitHubApp struct {
+	username string
+	err      error
+}
 
-test2:$2y$05$LstBCg/Z9DRNeFae8wq/duuWAzk5JFbB8kTIptHITu.j0iGXmCqZu
-`
+func (m *mockGitHubApp) GetUser(ctx context.Context, accessToken string) (string, error) {
+	if m.err != nil {
+		return "", m.err
+	}
+	return m.username, nil
+}
 
-func TestVerifyCredentials(t *testing.T) {
-	userAuth, err := FromHtpasswd(htpasswd)
-	if err != nil {
-		t.Error(err)
+func TestEncryptDecrypt(t *testing.T) {
+	key, _ := hex.DecodeString("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+
+	original := UserSession{
+		GitHubUsername: "testuser",
+		ExpiresAt:      time.Now().Unix(),
 	}
 
-	testCases := []struct {
-		desc      string
-		username  string
-		password  string
-		wantError error
+	encrypted, err := encrypt(key, original)
+	assert.NoError(t, err, "encrypt() should not error")
+
+	decrypted, err := decrypt[UserSession](key, encrypted)
+	assert.NoError(t, err, "decrypt() should not error")
+	assert.Equal(t, decrypted, original, "Decrypted and original mismatch")
+}
+
+func TestGenerateOAuthState(t *testing.T) {
+	state1, err := generateOAuthState()
+	assert.NoError(t, err, "generateOAuthState() should not error")
+
+	state2, err := generateOAuthState()
+	assert.NoError(t, err, "generateOAuthState() should not error")
+
+	if state1.State == state2.State {
+		t.Error("states should be unique")
+	}
+	if state1.CodeVerifier == state2.CodeVerifier {
+		t.Error("code verifiers should be unique")
+	}
+}
+
+func TestMiddleware(t *testing.T) {
+	cfg := config.GitHubConfig{
+		ClientID:        "test-client-id",
+		ClientSecret:    "test-client-secret",
+		AuthorizedUsers: []string{"user1"},
+	}
+	auth, _ := NewUserAuth(cfg, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("success"))
+	})
+
+	// Helper to create session cookies
+	createSessionCookie := func(username string, expiresIn time.Duration) *http.Cookie {
+		session := UserSession{
+			GitHubUsername: username,
+			ExpiresAt:      time.Now().Add(expiresIn).Unix(),
+		}
+		encrypted, _ := encrypt(auth.encryptionKey, session)
+		return &http.Cookie{
+			Name:  "user_session",
+			Value: encrypted,
+		}
+	}
+
+	tests := []struct {
+		name         string
+		cookie       *http.Cookie
+		wantStatus   int
+		wantLocation string
 	}{
 		{
-			desc:      "user does not exist",
-			username:  "not_a_user",
-			password:  "1234",
-			wantError: ErrUserDoesNotExist,
+			name:         "no session cookie redirects to login",
+			cookie:       nil,
+			wantStatus:   http.StatusSeeOther,
+			wantLocation: "/auth/login",
 		},
 		{
-			desc:      "password mismatch for test1",
-			username:  "test1",
-			password:  "4321",
-			wantError: ErrPasswordMismatch,
+			name:       "valid session allows access",
+			cookie:     createSessionCookie("user1", 1*time.Hour),
+			wantStatus: http.StatusOK,
 		},
 		{
-			desc:      "password mismatch for test2",
-			username:  "test2",
-			password:  "asdf",
-			wantError: ErrPasswordMismatch,
+			name:         "expired session redirects to login",
+			cookie:       createSessionCookie("user1", -1*time.Hour),
+			wantStatus:   http.StatusSeeOther,
+			wantLocation: "/auth/login",
 		},
 		{
-			desc:      "password match for test1",
-			username:  "test1",
-			password:  "1234",
-			wantError: nil,
+			name: "invalid session cookie redirects to login",
+			cookie: &http.Cookie{
+				Name:  "user_session",
+				Value: "invalid-encrypted-data",
+			},
+			wantStatus:   http.StatusSeeOther,
+			wantLocation: "/auth/login",
 		},
 		{
-			desc:      "password match for test2",
-			username:  "test2",
-			password:  "4321",
-			wantError: nil,
+			name:         "valid session with unauthorized user redirects to login",
+			cookie:       createSessionCookie("unauthorized-user", 1*time.Hour),
+			wantStatus:   http.StatusSeeOther,
+			wantLocation: "/auth/login",
 		},
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.desc, func(t *testing.T) {
-			gotError := userAuth.VerifyCredentials(tc.username, tc.password)
-			if !errors.Is(gotError, tc.wantError) {
-				t.Errorf("got %v, want %v", gotError, tc.wantError)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/", nil)
+			if tt.cookie != nil {
+				req.AddCookie(tt.cookie)
+			}
+			w := httptest.NewRecorder()
+
+			auth.Middleware(nextHandler).ServeHTTP(w, req)
+
+			resp := w.Result()
+			if resp.StatusCode != tt.wantStatus {
+				t.Errorf("got status %d, want %d", resp.StatusCode, tt.wantStatus)
+			}
+
+			if tt.wantLocation != "" {
+				location := resp.Header.Get("Location")
+				if location != tt.wantLocation {
+					t.Errorf("got location %s, want %s", location, tt.wantLocation)
+				}
 			}
 		})
 	}
 }
 
-type BasicAuth struct {
-	User, Password string
-}
+func TestHandleCallback_AuthorizedUser(t *testing.T) {
+	cfg := config.GitHubConfig{
+		ClientID:        "test-client-id",
+		ClientSecret:    "test-client-secret",
+		AuthorizedUsers: []string{"authorized-user"},
+	}
+	auth, _ := NewUserAuth(cfg, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 
-func TestMiddleware(t *testing.T) {
-	testCases := []struct {
-		desc            string
-		auth            *BasicAuth
-		wantHTTPCode    int
-		wwwAuthenticate string
+	// Mock OAuth server
+	oauthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/login/oauth/access_token" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{
+				"access_token": "mock-access-token",
+				"token_type":   "bearer",
+			})
+		}
+	}))
+	defer oauthServer.Close()
+
+	auth.oauthConfig.Endpoint.TokenURL = oauthServer.URL + "/login/oauth/access_token"
+
+	tests := []struct {
+		name         string
+		username     string
+		wantStatus   int
+		wantRedirect string
 	}{
 		{
-			desc:            "no auth header",
-			auth:            nil,
-			wantHTTPCode:    http.StatusUnauthorized,
-			wwwAuthenticate: `Basic realm="restricted", charset="UTF-8"`,
+			name:         "authorized user",
+			username:     "authorized-user",
+			wantStatus:   http.StatusSeeOther,
+			wantRedirect: "/",
 		},
 		{
-			desc: "invalid credentials",
-			auth: &BasicAuth{
-				User:     "test1",
-				Password: "wrong_password",
-			},
-			wantHTTPCode:    http.StatusUnauthorized,
-			wwwAuthenticate: `Basic realm="restricted", charset="UTF-8"`,
-		},
-		{
-			desc: "valid credentials",
-			auth: &BasicAuth{
-				User:     "test1",
-				Password: "1234",
-			},
-			wantHTTPCode:    http.StatusOK,
-			wwwAuthenticate: "",
+			name:       "unauthorized user",
+			username:   "unauthorized-user",
+			wantStatus: http.StatusForbidden,
 		},
 	}
 
-	for _, tc := range testCases {
-		t.Run(tc.desc, func(t *testing.T) {
-			// Create handler with auth middleware
-			userAuth, err := FromHtpasswd(htpasswd)
-			if err != nil {
-				t.Error(err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockGH := &mockGitHubApp{username: tt.username}
+			handler := HandleCallback(auth, mockGH)
+
+			oauthState := OAuthState{
+				State:        "test-state",
+				CodeVerifier: "test-verifier",
+				CreatedAt:    time.Now().Unix(),
 			}
-			handler := userAuth.Middleware(http.HandlerFunc(
-				func(w http.ResponseWriter, r *http.Request) {
-					w.WriteHeader(http.StatusOK)
-					w.Write([]byte("Success"))
-				},
-			))
+			encryptedState, _ := encrypt(auth.encryptionKey, oauthState)
 
-			// Create request with given basic auth header
-			req := httptest.NewRequest(http.MethodGet, "/", nil)
-			if tc.auth != nil {
-				req.SetBasicAuth(tc.auth.User, tc.auth.Password)
+			params := url.Values{}
+			params.Add("code", "test-code")
+			params.Add("state", "test-state")
+
+			req := httptest.NewRequest("GET", "/auth/callback?"+params.Encode(), nil)
+			req.AddCookie(&http.Cookie{
+				Name:  "oauth_state",
+				Value: encryptedState,
+			})
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			resp := w.Result()
+			assert.Equal(t, resp.StatusCode, tt.wantStatus, "incorrect status code")
+
+			if tt.wantRedirect != "" {
+				assert.Equal(t, resp.Header.Get("Location"), tt.wantRedirect, "incorrect redirect location")
 			}
-
-			rr := httptest.NewRecorder()
-			handler.ServeHTTP(rr, req)
-
-			assert.Equal(t, rr.Code, tc.wantHTTPCode, "handler returned wrong status code")
-			assert.Equal(
-				t, rr.Header().Get("WWW-Authenticate"), tc.wwwAuthenticate,
-				"handler returned wrong WWW-Authenticate header",
-			)
 		})
 	}
 }

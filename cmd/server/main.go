@@ -81,19 +81,6 @@ func runServer() error {
 	log := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel}))
 	ctx = ctxlog.ContextWithLogger(ctx, log)
 
-	// Load user authentication
-	htpasswdFile := path.Join(*configDir, "users.htpasswd")
-	// sec: Path is from a trusted user
-	htpasswd, err := os.ReadFile(htpasswdFile) // #nosec G304
-	if err != nil {
-		return fmt.Errorf("failed to load users.htpasswd: %v", err)
-	}
-
-	userAuth, err := auth.FromHtpasswd(string(htpasswd))
-	if err != nil {
-		return fmt.Errorf("failed to decode users.htpasswd: %v", err)
-	}
-
 	// Connect to database
 	var pool *pgxpool.Pool
 	if cfg.DevMode {
@@ -157,7 +144,12 @@ func runServer() error {
 	scheduler := build.NewScheduler(cfg, &fs, &db, githubApp)
 	go scheduler.Run(ctx)
 
-	err = web.RunServer(ctx, 8000, cfg, userAuth, &db, &fs)
+	userAuth, err := auth.NewUserAuth(cfg.GitHub, os.Getenv("CI_SERVER_AUTH_KEY"))
+	if err != nil {
+		return fmt.Errorf("failed to decode users.htpasswd: %v", err)
+	}
+
+	err = web.RunServer(ctx, 8000, cfg, githubApp, userAuth, &db, &fs)
 	if err != nil {
 		return fmt.Errorf("error during web server execution: %w", err)
 	}

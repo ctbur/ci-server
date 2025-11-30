@@ -10,6 +10,7 @@ import (
 
 	"github.com/ctbur/ci-server/v2/internal/config"
 	"github.com/ctbur/ci-server/v2/internal/ctxlog"
+	"github.com/ctbur/ci-server/v2/internal/github"
 	"github.com/ctbur/ci-server/v2/internal/store"
 	"github.com/ctbur/ci-server/v2/internal/web/auth"
 	"github.com/ctbur/ci-server/v2/internal/web/ui"
@@ -18,7 +19,8 @@ import (
 
 func handler(
 	cfg *config.Config,
-	userAuth auth.UserAuth,
+	githubApp *github.GitHubApp,
+	userAuth *auth.UserAuth,
 	db *store.DBStore,
 	fs *store.FSStore,
 	tmpl *template.Template,
@@ -27,6 +29,10 @@ func handler(
 
 	staticFileServer := http.FileServer(http.FS(ui.StaticFS))
 	mux.Handle("/static/", http.StripPrefix("/static/", staticFileServer))
+
+	mux.Handle("GET /auth/login", auth.HandleLogin(userAuth))
+	mux.Handle("GET /auth/callback", auth.HandleCallback(userAuth, githubApp))
+	mux.Handle("GET /auth/logout", auth.HandleLogout(userAuth))
 
 	mux.Handle("POST /webhook/github", webhook.HandleGitHub(db, cfg))
 	if cfg.DevMode {
@@ -40,14 +46,16 @@ func handler(
 	uiMux.Handle("GET /hx/builds/{build_id}", ui.HandleBuildDetailsFragment(db, fs, tmpl))
 	mux.Handle("/", userAuth.Middleware(uiMux))
 
-	return ctxlog.Middleware(mux)
+	omitQueryPaths := []string{"/auth/callback"}
+	return ctxlog.Middleware(mux, omitQueryPaths)
 }
 
 func RunServer(
 	ctx context.Context,
 	port int,
 	cfg *config.Config,
-	userAuth auth.UserAuth,
+	githubApp *github.GitHubApp,
+	auth *auth.UserAuth,
 	db *store.DBStore,
 	fs *store.FSStore,
 ) error {
@@ -58,7 +66,7 @@ func RunServer(
 		return fmt.Errorf("failed to load templates: %v", err)
 	}
 
-	handler := handler(cfg, userAuth, db, fs, tmpl)
+	handler := handler(cfg, githubApp, auth, db, fs, tmpl)
 
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),

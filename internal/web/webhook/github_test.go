@@ -87,8 +87,8 @@ func (c *MockBuildCreator) CreateBuild(
 func validConfig() *config.Config {
 	return &config.Config{
 		GitHub: config.GitHubConfig{
-			AuthorizedInstallationIDs: []uint64{92907551},
-			WebhookSecret:             testWebhookSecret,
+			AuthorizedInstallations: []uint64{92907551},
+			WebhookSecret:           testWebhookSecret,
 		},
 		Repos: []config.RepoConfig{{Owner: "ctbur", Name: "ci-server"}},
 	}
@@ -217,7 +217,7 @@ func TestGitHubWebhook_InstallationAuthorization(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := validConfig()
-			cfg.GitHub.AuthorizedInstallationIDs = tc.installationIDs
+			cfg.GitHub.AuthorizedInstallations = tc.installationIDs
 
 			rr, _ := runWebhook(t, cfg, baseHeader, pushPayload)
 			assert.Equal(t, rr.Code, tc.wantCode, "status code")

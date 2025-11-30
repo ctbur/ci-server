@@ -15,11 +15,15 @@ type Config struct {
 }
 
 type GitHubConfig struct {
-	AppID                     uint64   `toml:"app_id"`
-	AuthorizedInstallationIDs []uint64 `toml:"authorized_installation_ids"`
-	PrivateKeyPath            string   `toml:"private_key_path"`
+	AppID                   uint64   `toml:"app_id"`
+	AuthorizedInstallations []uint64 `toml:"authorized_installations"`
+	AuthorizedUsers         []string `toml:"authorized_users"`
+	ClientID                string   `toml:"client_id"`
+	// Name mapped to "encrypted_client_secret" - we decrypt it as part of loading the config
+	ClientSecret   string `toml:"encrypted_client_secret"`
+	PrivateKeyPath string `toml:"private_key_path"`
 	// Name mapped to "encrypted_webhook_secret" - we decrypt it as part of loading the config
-	WebhookSecret string `toml:"encrypted_webhook_secret,omitempty"`
+	WebhookSecret string `toml:"encrypted_webhook_secret"`
 }
 
 type RepoConfigs []RepoConfig
@@ -45,12 +49,18 @@ func Load(secretKey, configFile string) (*Config, error) {
 
 	// TODO: Validate that required fields are set
 
+	// Decrypt client secret
+	plaintext, err := decryptSecret(secretKey, cfg.GitHub.ClientSecret)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt client secret: %w", err)
+	}
+	cfg.GitHub.ClientSecret = plaintext
+
 	// Decrypt webhook secret
-	plaintext, err := decryptSecret(secretKey, cfg.GitHub.WebhookSecret)
+	plaintext, err = decryptSecret(secretKey, cfg.GitHub.WebhookSecret)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt webhook secret: %w", err)
 	}
-
 	cfg.GitHub.WebhookSecret = plaintext
 
 	// Decrypt repo secrets

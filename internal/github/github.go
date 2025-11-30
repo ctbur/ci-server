@@ -47,6 +47,44 @@ func NewGitHubApp(
 	}
 }
 
+func (a *GitHubApp) GetUser(ctx context.Context, accessToken string) (string, error) {
+	log := ctxlog.FromContext(ctx)
+	log.DebugContext(ctx,
+		"GetUser",
+		slog.String("client", "github"),
+	)
+
+	// Create request
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/user", nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	// Perform request
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to perform request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	// Parse response
+	var result struct {
+		Login string `json:"login"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return result.Login, nil
+}
+
 func (a *GitHubApp) getAppToken(ctx context.Context) (string, error) {
 	if a.appToken == "" || time.Until(a.appTokenExpiry) < 2*time.Minute {
 		token, expiry, err := a.issueAppToken(time.Now())

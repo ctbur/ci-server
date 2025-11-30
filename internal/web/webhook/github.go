@@ -76,7 +76,7 @@ func HandleGitHub(b BuildCreator, cfg *config.Config) http.HandlerFunc {
 
 		// Validate installation ID is authorized
 		installationID := event.Installation.ID
-		if !slices.Contains(cfg.GitHub.AuthorizedInstallationIDs, installationID) {
+		if !slices.Contains(cfg.GitHub.AuthorizedInstallations, installationID) {
 			log.ErrorContext(ctx,
 				"Unauthorized installation ID",
 				slog.Uint64("installation_id", installationID),
