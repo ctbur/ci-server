@@ -93,7 +93,7 @@ func TestMiddleware(t *testing.T) {
 			name:         "no session cookie redirects to login",
 			cookie:       nil,
 			wantStatus:   http.StatusSeeOther,
-			wantLocation: "/auth/login",
+			wantLocation: "/login",
 		},
 		{
 			name:       "valid session allows access",
@@ -104,7 +104,7 @@ func TestMiddleware(t *testing.T) {
 			name:         "expired session redirects to login",
 			cookie:       createSessionCookie("user1", -1*time.Hour),
 			wantStatus:   http.StatusSeeOther,
-			wantLocation: "/auth/login",
+			wantLocation: "/login",
 		},
 		{
 			name: "invalid session cookie redirects to login",
@@ -113,13 +113,13 @@ func TestMiddleware(t *testing.T) {
 				Value: "invalid-encrypted-data",
 			},
 			wantStatus:   http.StatusSeeOther,
-			wantLocation: "/auth/login",
+			wantLocation: "/login",
 		},
 		{
 			name:         "valid session with unauthorized user redirects to login",
 			cookie:       createSessionCookie("unauthorized-user", 1*time.Hour),
 			wantStatus:   http.StatusSeeOther,
-			wantLocation: "/auth/login",
+			wantLocation: "/login",
 		},
 	}
 
@@ -141,7 +141,11 @@ func TestMiddleware(t *testing.T) {
 			if tt.wantLocation != "" {
 				location := resp.Header.Get("Location")
 				if location != tt.wantLocation {
-					t.Errorf("got location %s, want %s", location, tt.wantLocation)
+					t.Errorf("got Location %s, want %s", location, tt.wantLocation)
+				}
+				hxRedirect := resp.Header.Get("HX-Redirect")
+				if hxRedirect != tt.wantLocation {
+					t.Errorf("got HX-Redirect %s, want %s", hxRedirect, tt.wantLocation)
 				}
 			}
 		})

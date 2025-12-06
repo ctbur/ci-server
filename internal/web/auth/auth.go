@@ -105,7 +105,7 @@ func HandleLogin(auth *UserAuth) http.HandlerFunc {
 	}
 }
 
-const sessionDuration = 24 * time.Hour
+const sessionDuration = 7 * 24 * time.Hour
 
 func HandleCallback(auth *UserAuth, github githubUserClient) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -234,26 +234,26 @@ func (a *UserAuth) Middleware(next http.Handler) http.Handler {
 			if !errors.Is(err, http.ErrNoCookie) {
 				log.ErrorContext(ctx, "Failed to read user session cookie", slog.Any("error", err))
 			}
-			http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
+			redirectToLoginPage(w, r)
 			return
 		}
 
 		userSession, err := decrypt[UserSession](a.encryptionKey, cookie.Value)
 		if err != nil {
 			log.ErrorContext(ctx, "Failed to decrypt user session", slog.Any("error", err))
-			http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
+			redirectToLoginPage(w, r)
 			return
 		}
 
 		if _, ok := a.authorizedGitHubUsers[userSession.GitHubUsername]; !ok {
 			log.WarnContext(ctx, "Unauthorized GitHub user in session", slog.String("user", userSession.GitHubUsername))
-			http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
+			redirectToLoginPage(w, r)
 			return
 		}
 
 		if time.Now().Unix() > userSession.ExpiresAt {
 			log.InfoContext(ctx, "User session expired", slog.String("user", userSession.GitHubUsername))
-			http.Redirect(w, r, "/auth/login", http.StatusSeeOther)
+			redirectToLoginPage(w, r)
 			return
 		}
 
@@ -262,6 +262,11 @@ func (a *UserAuth) Middleware(next http.Handler) http.Handler {
 		ctx = ctxlog.ContextWithLogger(ctx, log)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func redirectToLoginPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("HX-Redirect", "/login")
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
 type OAuthState struct {
