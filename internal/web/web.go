@@ -39,6 +39,9 @@ func handler(
 		mux.Handle("POST /webhook/manual", webhook.HandleManual(db, cfg))
 	}
 
+	// Login is the only page accessible without authentication
+	mux.Handle("GET /login", ui.HandleLogin(db, tmpl))
+
 	uiMux := http.NewServeMux()
 	uiMux.Handle("GET /{$}", ui.HandleBuildList(db, tmpl))
 	uiMux.Handle("GET /hx/builds", ui.HandleBuildListFragment(db, tmpl))
