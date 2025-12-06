@@ -22,6 +22,10 @@ import (
 	"golang.org/x/oauth2/endpoints"
 )
 
+const cookieOAuthState = "oauth_state"
+const cookieUserSession = "user_session"
+const sessionDuration = 7 * 24 * time.Hour
+
 type githubUserClient interface {
 	GetUser(ctx context.Context, accessToken string) (string, error)
 }
@@ -80,7 +84,7 @@ func HandleLogin(auth *UserAuth) http.HandlerFunc {
 
 		// Store in HTTP-only, secure cookie
 		http.SetCookie(w, &http.Cookie{
-			Name:     "oauth_state",
+			Name:     cookieOAuthState,
 			Value:    encryptedState,
 			Path:     "/",
 			HttpOnly: true,
@@ -105,14 +109,12 @@ func HandleLogin(auth *UserAuth) http.HandlerFunc {
 	}
 }
 
-const sessionDuration = 7 * 24 * time.Hour
-
 func HandleCallback(auth *UserAuth, github githubUserClient) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		log := ctxlog.FromContext(ctx)
 
-		cookie, err := r.Cookie("oauth_state")
+		cookie, err := r.Cookie(cookieOAuthState)
 		if err != nil {
 			log.ErrorContext(ctx, "Missing oauth state cookie", slog.Any("error", err))
 			http.Error(w, "Invalid OAuth state", http.StatusBadRequest)
@@ -142,7 +144,7 @@ func HandleCallback(auth *UserAuth, github githubUserClient) http.HandlerFunc {
 
 		// Delete the cookie
 		http.SetCookie(w, &http.Cookie{
-			Name:   "oauth_state",
+			Name:   cookieOAuthState,
 			Path:   "/",
 			MaxAge: -1,
 		})
@@ -191,12 +193,12 @@ func HandleCallback(auth *UserAuth, github githubUserClient) http.HandlerFunc {
 		}
 
 		http.SetCookie(w, &http.Cookie{
-			Name:     "user_session",
+			Name:     cookieUserSession,
 			Value:    encryptedSession,
 			Path:     "/",
 			HttpOnly: true,
 			Secure:   true,
-			SameSite: http.SameSiteStrictMode,
+			SameSite: http.SameSiteLaxMode,
 			MaxAge:   int(sessionDuration.Seconds()),
 		})
 
@@ -213,7 +215,7 @@ func HandleLogout(auth *UserAuth) http.HandlerFunc {
 
 		// Delete the user session cookie
 		http.SetCookie(w, &http.Cookie{
-			Name:   "user_session",
+			Name:   cookieUserSession,
 			Path:   "/",
 			MaxAge: -1,
 		})
@@ -229,7 +231,7 @@ func (a *UserAuth) Middleware(next http.Handler) http.Handler {
 		ctx := r.Context()
 		log := ctxlog.FromContext(ctx)
 
-		cookie, err := r.Cookie("user_session")
+		cookie, err := r.Cookie(cookieUserSession)
 		if err != nil {
 			if !errors.Is(err, http.ErrNoCookie) {
 				log.ErrorContext(ctx, "Failed to read user session cookie", slog.Any("error", err))
