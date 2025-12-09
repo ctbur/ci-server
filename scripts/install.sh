@@ -3,10 +3,9 @@
 
 set -e
 
-REMOTE_HOST="${1:-root@ci.ctbur.net}"
-BASE_DIR="${2:-/usr/local}"
+REMOTE_HOST="ci-installer@ci.ctbur.net"
+BASE_DIR="/opt/ci-server"
 
-# Set up an SSH agent to supply the key from an env var
 if [ "$CI" = "true" ]; then
     echo "Running in CI mode: Starting SSH Agent and loading key from environment"
 
@@ -37,12 +36,12 @@ else
 fi
 
 echo "Copying files..."
-# TODO: this script can probably be simplified given that now we only have one binary to copy
-rsync -e "ssh ${SSH_OPTS}" -avz "./build/ci-server" "${REMOTE_HOST}:${BASE_DIR}/bin/ci-server"
+rsync -e "ssh ${SSH_OPTS}" -avz "./build/ci-server" "./ci.service" "${REMOTE_HOST}:${BASE_DIR}/"
 echo ""
 
 echo "Restarting service..."
-ssh ${SSH_OPTS} "${REMOTE_HOST}" "systemctl restart ci.service"
+ssh ${SSH_OPTS} "${REMOTE_HOST}" "sudo /usr/bin/systemctl daemon-reload"
+ssh ${SSH_OPTS} "${REMOTE_HOST}" "sudo /usr/bin/systemctl restart ci.service"
 echo ""
 
 echo "Done"

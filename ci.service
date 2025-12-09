@@ -1,0 +1,33 @@
+# CI Server systemd service file
+[Unit]
+Description=Continuous Integration Server
+After=network.target
+
+[Service]
+User=ci-server
+Group=ci-server
+Type=simple
+# Only kill the parent to stop the server. This is required to keep the builder
+# processes running, to allow for upgrades without stopping builds.
+KillMode=process
+
+WorkingDirectory=/
+ExecStart=/opt/ci-server/ci-server --config /opt/ci-server/
+# Set the PATH to something controlled as this variable is passed on to the
+# builder processes. PostgreSQL binaries are included for tests that use
+# the database CLI tools.
+Environment=PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/usr/lib/postgresql/16/bin'
+EnvironmentFile=/opt/ci-server/server-secrets.env
+
+StandardOutput=journal
+StandardError=inherit
+
+Restart=always
+RestartSec=5
+
+ProtectHome=true
+ProtectSystem=full
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
